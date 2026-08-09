@@ -7,28 +7,69 @@ const StoredProjectIdSchema = Type.String({
   pattern: "^[a-z0-9][a-z0-9-]{0,63}$",
 });
 
+export const PROJECTS_LIST_DEFAULT_LIMIT = 50;
+export const PROJECTS_LIST_MAX_LIMIT = 200;
+export const PROJECTS_LIST_MAX_CHECKOUTS_PER_PROJECT = 50;
+export const PROJECTS_LIST_MAX_IDENTITY_PROBES = 32;
+
 export const ProjectRecordSchema = closedObject({
   id: NonEmptyString,
   displayName: NonEmptyString,
   repoRoot: Type.Optional(
     Type.String({
       minLength: 1,
-      description: "Repository checkout root; included only for callers holding operator.write.",
+      description: "Repository checkout root returned by operator.write-scoped projects.list.",
     }),
   ),
   originUrl: Type.Optional(
     Type.String({
       minLength: 1,
-      description: "Repository origin URL; included only for callers holding operator.write.",
+      description: "Repository origin URL returned by operator.write-scoped projects.list.",
     }),
   ),
   source: Type.String({ enum: ["workspace", "registered", "cloned"] }),
   agentId: Type.Optional(NonEmptyString),
 });
 
-export const ProjectsListParamsSchema = closedObject({});
+/** One gateway-visible checkout for an observed repository project. */
+export const ProjectCheckoutSchema = closedObject({
+  runnerId: Type.String({
+    minLength: 1,
+    description: "Runner hosting this operator.write-scoped checkout.",
+  }),
+  path: Type.String({
+    minLength: 1,
+    description: "Physical checkout path returned only by operator.write-scoped projects.list.",
+  }),
+});
+
+/** Repository identity derived from visible checkout and session state. */
+export const ProjectSummarySchema = closedObject({
+  name: NonEmptyString,
+  originUrl: Type.Optional(
+    Type.String({
+      minLength: 1,
+      description: "Sanitized repository origin returned by operator.write-scoped projects.list.",
+    }),
+  ),
+  checkouts: Type.Array(ProjectCheckoutSchema, {
+    minItems: 1,
+    maxItems: PROJECTS_LIST_MAX_CHECKOUTS_PER_PROJECT,
+  }),
+  lastUsedAt: Type.Number({ minimum: 0 }),
+});
+
+export const ProjectsListParamsSchema = closedObject({
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: PROJECTS_LIST_MAX_LIMIT })),
+});
 export const ProjectsListResultSchema = closedObject({
-  projects: Type.Array(ProjectRecordSchema),
+  projects: Type.Array(ProjectRecordSchema, { maxItems: PROJECTS_LIST_MAX_LIMIT }),
+  observedProjects: Type.Optional(
+    Type.Array(ProjectSummarySchema, {
+      maxItems: PROJECTS_LIST_MAX_LIMIT,
+      description: "Observed checkout details returned by operator.write-scoped projects.list.",
+    }),
+  ),
 });
 
 export const ProjectsRegisterParamsSchema = closedObject({
@@ -41,6 +82,8 @@ export const ProjectsRemoveParamsSchema = closedObject({ id: StoredProjectIdSche
 export const ProjectsRemoveResultSchema = closedObject({ removed: Type.Boolean() });
 
 export type ProjectRecord = Static<typeof ProjectRecordSchema>;
+export type ProjectCheckout = Static<typeof ProjectCheckoutSchema>;
+export type ProjectSummary = Static<typeof ProjectSummarySchema>;
 export type ProjectsListParams = Static<typeof ProjectsListParamsSchema>;
 export type ProjectsListResult = Static<typeof ProjectsListResultSchema>;
 export type ProjectsRegisterParams = Static<typeof ProjectsRegisterParamsSchema>;

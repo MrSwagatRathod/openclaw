@@ -2,13 +2,36 @@ import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import { expect, test } from "vitest";
+import { beforeEach, expect, test, vi } from "vitest";
+import type { SessionEntry } from "../../config/sessions.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { registerProjectRegistry } from "../../projects/project-registry.js";
 import { createOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
-import { projectsHandlers } from "./projects.js";
+import { createProjectsHandlers } from "./projects.js";
 
 const execFileAsync = promisify(execFile);
+
+const seededSessions = vi.hoisted(() => ({
+  store: {} as Record<string, SessionEntry>,
+}));
+
+vi.mock("../session-utils.js", () => ({
+  loadCombinedSessionStoreForGateway: () => ({ store: seededSessions.store }),
+}));
+
+beforeEach(() => {
+  seededSessions.store = {};
+});
+
+const projectsHandlers = createProjectsHandlers({
+  list: async () => [],
+  resolveRepositoryIdentity: async (checkoutPath: string) => ({
+    checkoutRoot: checkoutPath,
+    repoRoot: checkoutPath,
+    originUrl: "",
+    fingerprint: checkoutPath,
+  }),
+} as never);
 
 async function initializeRepository(root: string): Promise<string> {
   const repo = path.join(root, "registered");
@@ -84,7 +107,7 @@ test("projects.list merges synthesized workspaces with stored rows deterministic
   }
 });
 
-test("projects.list exposes checkout details only at write scope", async () => {
+test("projects.list returns detailed registered projects to authorized callers", async () => {
   const state = await createOpenClawTestState({ layout: "state-only", prefix: "projects-rpc-" });
   try {
     const repo = await initializeRepository(state.root);
@@ -94,20 +117,6 @@ test("projects.list exposes checkout details only at write scope", async () => {
         list: [{ id: "main", default: true, workspace: "/workspace/alpha" }],
       },
     };
-
-    const readResult = await invokeProjectMethod("projects.list", {}, cfg, ["operator.read"]);
-    if (!readResult) {
-      throw new Error("projects.list did not respond");
-    }
-    const readProjects = (readResult.payload as { projects: Record<string, unknown>[] }).projects;
-    expect(readProjects).toEqual([
-      { id: "workspace:main", displayName: "alpha", source: "workspace", agentId: "main" },
-      { id: "registered", displayName: "Registered", source: "registered" },
-    ]);
-    for (const project of readProjects) {
-      expect(project).not.toHaveProperty("repoRoot");
-      expect(project).not.toHaveProperty("originUrl");
-    }
 
     for (const scope of ["operator.write", "operator.admin"]) {
       const writeResult = await invokeProjectMethod("projects.list", {}, cfg, [scope]);
