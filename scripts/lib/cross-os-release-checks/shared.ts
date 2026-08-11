@@ -1,6 +1,9 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { toErrorObject as toLintErrorObject } from "../../../packages/normalization-core/src/error-coercion.ts";
 import { truncateUtf16Safe } from "../../../packages/normalization-core/src/utf16-slice.ts";
+
+export { toLintErrorObject };
 
 export function resolveCommandPath(command: string) {
   const pathValue = process.env.PATH ?? "";
@@ -43,18 +46,4 @@ export function sleep(ms: number) {
   return new Promise<void>((resolvePromise) => {
     setTimeout(resolvePromise, ms);
   });
-}
-
-export function toLintErrorObject(value: unknown, fallbackMessage: string): Error {
-  if (value instanceof Error) {
-    return value;
-  }
-  if (typeof value === "string") {
-    return new Error(value);
-  }
-  const error = new Error(fallbackMessage, { cause: value });
-  if ((typeof value === "object" && value !== null) || typeof value === "function") {
-    Object.assign(error, value);
-  }
-  return error;
 }

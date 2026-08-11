@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { coerceErrorMessage as formatSpawnError } from "@openclaw/normalization-core/error-coercion";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import pMap from "p-map";
 import { parsePositiveInt } from "./lib/numeric-options.mjs";
@@ -332,10 +333,6 @@ function parseMaxRssBytes(output: string) {
     return Number.parseInt(linuxMatch[1] ?? "", 10) * 1024;
   }
   return null;
-}
-
-function formatSpawnError(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function hasErrorCode(error: unknown, code: string) {

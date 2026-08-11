@@ -1,5 +1,6 @@
 // Runs a Vitest config and enforces wall-time regression budgets.
 import { pathToFileURL } from "node:url";
+import { coerceErrorMessage as formatErrorMessage } from "@openclaw/normalization-core/error-coercion";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { booleanFlag, parseFlagArgs, stringFlag, type FlagSpec } from "./lib/arg-utils.mts";
 import {
@@ -76,10 +77,6 @@ function parseArgs(argv: readonly string[], env = process.env) {
     );
   }
   return opts;
-}
-
-function formatErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function collectPerfReportStats(reportPath: string) {

@@ -19,6 +19,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as v8 from "node:v8";
+import { toErrorObject as toLintErrorObject } from "@openclaw/normalization-core/error-coercion";
 import { expectDefined } from "../packages/normalization-core/src/expect.js";
 
 type Mode = "production" | "closure-extracted" | "closure-inline" | "synthetic-leak";
@@ -417,17 +418,3 @@ main().catch((err: unknown) => {
   process.stderr.write(`harness crashed: ${String(err)}\n${(err as Error)?.stack ?? ""}\n`);
   process.exit(2);
 });
-
-function toLintErrorObject(value: unknown, fallbackMessage: string): Error {
-  if (value instanceof Error) {
-    return value;
-  }
-  if (typeof value === "string") {
-    return new Error(value);
-  }
-  const error = new Error(fallbackMessage, { cause: value });
-  if ((typeof value === "object" && value !== null) || typeof value === "function") {
-    Object.assign(error, value);
-  }
-  return error;
-}

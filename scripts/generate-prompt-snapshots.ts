@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
+import { coerceErrorMessage as describeError } from "@openclaw/normalization-core/error-coercion";
 import {
   CODEX_RUNTIME_HAPPY_PATH_PROMPT_SNAPSHOT_DIR,
   createHappyPathPromptSnapshotFiles,
@@ -32,10 +33,6 @@ type CodexDynamicToolSnapshotOverrides = {
 
 const CODEX_DYNAMIC_TOOL_SNAPSHOT_PREFIX = "codex-dynamic-tools.";
 const CODEX_DYNAMIC_TOOL_BASE_SNAPSHOT = `${CODEX_DYNAMIC_TOOL_SNAPSHOT_PREFIX}telegram-direct.json`;
-
-function describeError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 async function writeSnapshotFiles(root: string, files: PromptSnapshotFile[]) {
   await Promise.all(
