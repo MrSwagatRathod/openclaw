@@ -316,6 +316,7 @@ export async function runTelegramDispatchTurn(params: {
       return false;
     }
     params.state.queuedFinal = turnResult.dispatchResult.queuedFinal;
+    params.state.agentRunTerminalOutcome = turnResult.dispatchResult.agentRunTerminalOutcome;
     params.state.noVisibleReplyFallbackEligible =
       turnResult.dispatchResult.noVisibleReplyFallbackEligible === true;
     if ((turnResult.dispatchResult.counts?.final ?? 0) > 0) {

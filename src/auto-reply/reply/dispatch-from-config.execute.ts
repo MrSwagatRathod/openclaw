@@ -37,10 +37,7 @@ export async function executeDispatch(state: PrepareDispatchExecutionReadyState)
   const {
     cfg,
     cleanBlockTtsDirectiveText,
-    commentaryPayloadsEnabled,
     ctx,
-    deliveryChannel,
-    deferFinalTtsText,
     dispatcher,
     failDispatchReplyOperation,
     flushPendingCommentaryProgress,
@@ -56,21 +53,15 @@ export async function executeDispatch(state: PrepareDispatchExecutionReadyState)
     notifySessionMetadataChanges,
     onToolResultFromReplyOptions,
     params,
-    reasoningPayloadsEnabled,
     recordAgentDispatchCompleted,
-    replyConfig,
-    replyRoute,
     resolveToolDeliveryPayload,
     runWithDispatchLifecycleAdmission,
     sendPayloadAsync,
     sendFinalPayload,
-    sessionAgentId,
-    sessionTtsAuto,
     shouldForwardProgressCallback,
     shouldRouteToOriginating,
     shouldSuppressDefaultToolProgressMessages,
     trackDispatchLifecycleWork,
-    typing,
     wasReplyDeliveredAsBlock,
     waitForPendingDirectBlockReplyDelivery,
     wrapProgressCallback,
@@ -82,12 +73,13 @@ export async function executeDispatch(state: PrepareDispatchExecutionReadyState)
     state.replyResolver,
   );
   const resolverConfigOverride =
-    state.preparedReplyDispatchRuntime && !params.configOverride ? undefined : replyConfig;
+    state.preparedReplyDispatchRuntime && !params.configOverride ? undefined : state.replyConfig;
+  let agentRunTerminalOutcome: "completed" | "failed" | undefined;
   let deliberateSilentTerminalReply = false;
   let pendingContinuation = false;
   let didDeliverVisiblePartialReply = false;
   const flushDeferredFinalText = async () => {
-    if (!deferFinalTtsText || params.replyOptions?.isHeartbeat === true) {
+    if (!state.deferFinalTtsText || params.replyOptions?.isHeartbeat === true) {
       return false;
     }
     const deferredVisibleText = cleanBlockTtsDirectiveText
@@ -133,11 +125,15 @@ export async function executeDispatch(state: PrepareDispatchExecutionReadyState)
                   onSessionPrepared: state.notePreparedSession,
                 } satisfies InternalReplyResolverOptions),
                 onObservedReplyDelivery: state.markObservedReplyDelivery,
+                onAgentRunStart: (runId) => {
+                  agentRunTerminalOutcome = "completed";
+                  state.getReplyOptions()?.onAgentRunStart?.(runId);
+                },
                 suppressToolErrorWarnings: state.suppressToolErrorWarnings,
                 shouldSuppressToolErrorWarnings: state.shouldSuppressToolErrorWarnings,
-                typingPolicy: typing.typingPolicy,
-                suppressTyping: typing.suppressTyping,
-                onPartialReply: deferFinalTtsText
+                typingPolicy: state.typing.typingPolicy,
+                suppressTyping: state.typing.suppressTyping,
+                onPartialReply: state.deferFinalTtsText
                   ? undefined
                   : wrapProgressCallback(params.replyOptions?.onPartialReply, {
                       onVisible: (payload) => {
@@ -170,8 +166,8 @@ export async function executeDispatch(state: PrepareDispatchExecutionReadyState)
                   state.deliverStandaloneCommentaryProgress ||
                   state.canForwardSuppressedSourceItemEvents ||
                   params.replyOptions?.commentaryProgressEnabled,
-                reasoningPayloadsEnabled,
-                commentaryPayloadsEnabled,
+                reasoningPayloadsEnabled: state.reasoningPayloadsEnabled,
+                commentaryPayloadsEnabled: state.commentaryPayloadsEnabled,
                 onCommandOutput: wrapProgressCallback(params.replyOptions?.onCommandOutput, {
                   forwardWhenSourceDeliverySuppressed: true,
                   requiresToolSummaryVisibility: true,
@@ -218,7 +214,7 @@ export async function executeDispatch(state: PrepareDispatchExecutionReadyState)
                     // the warning text; this drops the visible progress delivery too.
                     if (
                       payload.isError === true &&
-                      replyConfig.messages?.suppressToolErrors === true
+                      state.replyConfig.messages?.suppressToolErrors === true
                     ) {
                       return;
                     }
@@ -281,11 +277,11 @@ export async function executeDispatch(state: PrepareDispatchExecutionReadyState)
                     const ttsPayload = await maybeApplyTtsWithFinalizationLease({
                       payload: visibleToolPayload,
                       cfg,
-                      channel: deliveryChannel,
+                      channel: state.deliveryChannel,
                       kind: "tool",
-                      ttsAuto: sessionTtsAuto,
-                      agentId: sessionAgentId,
-                      accountId: replyRoute.accountId,
+                      ttsAuto: state.sessionTtsAuto,
+                      agentId: state.sessionAgentId,
+                      accountId: state.replyRoute.accountId,
                     });
                     const normalizedPayload = await normalizeReplyMediaPayload(ttsPayload);
                     const deliveryPayload = isForcedToolProgress
@@ -450,12 +446,12 @@ export async function executeDispatch(state: PrepareDispatchExecutionReadyState)
                     }
                     // Durable reasoning is a channel-owned lane; generic channels
                     // keep the historical suppression unless they explicitly opt in.
-                    if (payload.isReasoning === true && !reasoningPayloadsEnabled) {
+                    if (payload.isReasoning === true && !state.reasoningPayloadsEnabled) {
                       return;
                     }
                     // Durable commentary is a channel-owned lane; generic channels keep the
                     // historical suppression unless they explicitly opt in.
-                    if (payload.isCommentary === true && !commentaryPayloadsEnabled) {
+                    if (payload.isCommentary === true && !state.commentaryPayloadsEnabled) {
                       return;
                     }
                     // Accumulate block text for TTS generation after streaming.
@@ -499,7 +495,7 @@ export async function executeDispatch(state: PrepareDispatchExecutionReadyState)
                           })()
                         : payload;
                     const deferThisBlock =
-                      deferFinalTtsText &&
+                      state.deferFinalTtsText &&
                       !isStatusNotice &&
                       payload.isReasoning !== true &&
                       payload.isCommentary !== true;
@@ -542,11 +538,11 @@ export async function executeDispatch(state: PrepareDispatchExecutionReadyState)
                         : await maybeApplyTtsWithFinalizationLease({
                             payload: visiblePayload,
                             cfg,
-                            channel: deliveryChannel,
+                            channel: state.deliveryChannel,
                             kind: "block",
-                            ttsAuto: sessionTtsAuto,
-                            agentId: sessionAgentId,
-                            accountId: replyRoute.accountId,
+                            ttsAuto: state.sessionTtsAuto,
+                            agentId: state.sessionAgentId,
+                            accountId: state.replyRoute.accountId,
                           });
                     const normalizedPayload = await normalizeReplyMediaPayload(ttsPayload);
                     if (isDispatchOperationAborted()) {
@@ -617,11 +613,14 @@ export async function executeDispatch(state: PrepareDispatchExecutionReadyState)
     ) {
       throw error;
     }
+    if (agentRunTerminalOutcome === "completed") {
+      agentRunTerminalOutcome = "failed";
+    }
     failDispatchReplyOperation(error);
     return buildTerminalAgentRunFailureReplyPayload({
       visibleReplyDelivered: true,
       sessionCtx: ctx,
-      cfg: replyConfig,
+      cfg: state.replyConfig,
     });
   });
   if (isDispatchOperationAborted()) {
@@ -669,8 +668,8 @@ export async function executeDispatch(state: PrepareDispatchExecutionReadyState)
                   toolsAllow: params.replyOptions?.toolsAllow,
                   images: params.replyOptions?.images,
                   inboundAudio: state.inboundAudio,
-                  sessionTtsAuto,
-                  ttsChannel: deliveryChannel,
+                  sessionTtsAuto: state.sessionTtsAuto,
+                  ttsChannel: state.deliveryChannel,
                   suppressUserDelivery: state.suppressHookUserDelivery,
                   suppressReplyLifecycle: state.suppressHookReplyLifecycle,
                   sourceReplyDeliveryMode: state.sourceReplyDeliveryMode,
@@ -679,7 +678,7 @@ export async function executeDispatch(state: PrepareDispatchExecutionReadyState)
                   originatingTo: state.routeReplyTo,
                   originatingAccountId: state.replyContextAccountId,
                   originatingThreadId: state.routeReplyThreadId,
-                  originatingChatType: replyRoute.chatType,
+                  originatingChatType: state.replyRoute.chatType,
                   shouldSendToolSummaries: state.shouldSendToolSummaries,
                   shouldSendFullToolDetails: state.shouldEmitFullVerboseProgress(),
                   sendPolicy: state.sendPolicy,
@@ -715,6 +714,7 @@ export async function executeDispatch(state: PrepareDispatchExecutionReadyState)
     }
   }
   const nextState = extendPreparedDispatchState(state, {
+    ...(agentRunTerminalOutcome ? { agentRunTerminalOutcome } : {}),
     deliberateSilentTerminalReply,
     pendingContinuation,
     replyResult,

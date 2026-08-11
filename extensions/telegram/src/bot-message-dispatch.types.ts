@@ -66,6 +66,7 @@ export type TelegramAnswerBlockDelivery = {
 
 export type TelegramDispatchTurnState = {
   queuedFinal: boolean;
+  agentRunTerminalOutcome?: "completed" | "failed";
   noVisibleReplyFallbackEligible: boolean;
   suppressSilentReplyFallback: boolean;
   hadErrorReplyFailureOrSkip: boolean;

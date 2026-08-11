@@ -564,7 +564,8 @@ export const dispatchTelegramMessage = async ({
     status.finalizeInBackground(
       {
         outcome:
-          !progress.finalAnswerDelivered() && (state.dispatchError != null || sentFallback)
+          state.agentRunTerminalOutcome === "failed" ||
+          (!progress.finalAnswerDelivered() && (state.dispatchError != null || sentFallback))
             ? "error"
             : "done",
       },

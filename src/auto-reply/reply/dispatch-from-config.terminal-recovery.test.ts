@@ -79,7 +79,10 @@ describe("dispatchReplyFromConfig terminal visible admission recovery", () => {
       updatedAt: Date.now(),
     };
 
-    const replyResolver = vi.fn(async () => ({ text: "telegram reply" }) satisfies ReplyPayload);
+    const replyResolver = vi.fn(async (_ctx, options) => {
+      options?.onAgentRunStart?.("successful-run");
+      return { text: "telegram reply" } satisfies ReplyPayload;
+    });
     const dispatchParams = createVisibleDispatchParams(replyResolver);
 
     const result = await dispatchReplyFromConfig(dispatchParams);
@@ -93,6 +96,7 @@ describe("dispatchReplyFromConfig terminal visible admission recovery", () => {
     expect(result).toMatchObject({
       queuedFinal: true,
       counts: { tool: 0, block: 0, final: 0 },
+      agentRunTerminalOutcome: "completed",
     });
     expect(replyResolver).toHaveBeenCalledTimes(1);
     expect(dispatchParams.dispatcher.sendFinalReply).toHaveBeenCalledTimes(1);
@@ -109,6 +113,7 @@ describe("dispatchReplyFromConfig terminal visible admission recovery", () => {
         throw new Error("reply options required for partial recovery");
       }
       replyOperation = options.replyOperation;
+      options.onAgentRunStart?.("failed-run");
       await options.onPartialReply?.({ text: "partial telegram reply" });
       throw resolverError;
     };
@@ -129,6 +134,7 @@ describe("dispatchReplyFromConfig terminal visible admission recovery", () => {
     expect(result).toMatchObject({
       queuedFinal: true,
       counts: { tool: 0, block: 0, final: 0 },
+      agentRunTerminalOutcome: "failed",
     });
     expect(dispatchParams.replyOptions.onPartialReply).toHaveBeenCalledWith({
       text: "partial telegram reply",
