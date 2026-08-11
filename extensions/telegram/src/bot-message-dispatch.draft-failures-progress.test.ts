@@ -1,4 +1,3 @@
-import { dispatchReplyWithBufferedBlockDispatcher as dispatchReplyWithBufferedBlockDispatcherRuntime } from "openclaw/plugin-sdk/reply-dispatch-runtime";
 import { expect, it, vi } from "vitest";
 import {
   describeTelegramDispatch,
@@ -134,14 +133,19 @@ describeTelegramDispatch("dispatchTelegramMessage draft-failures-progress", () =
       let partialAccepted: boolean | void = undefined;
       dispatchReplyWithBufferedBlockDispatcher.mockImplementation(async (params) => {
         expect(params.replyOptions?.disableBlockStreaming).toBe(true);
-        return await dispatchReplyWithBufferedBlockDispatcherRuntime({
-          ...params,
-          replyResolver: async (_ctx, opts) => {
-            opts?.onAgentRunStart?.("telegram-recovered-failure");
-            partialAccepted = await opts?.onPartialReply?.({ text: "partial answer" });
-            throw new Error("unexpected model failure");
+        partialAccepted = await params.replyOptions?.onPartialReply?.({ text: "partial answer" });
+        await params.dispatcherOptions.deliver(
+          {
+            text: "Something went wrong while processing your request. Please try again, or use /new to start a fresh session.",
+            isError: true,
           },
-        });
+          { kind: "final" },
+        );
+        return {
+          queuedFinal: true,
+          counts: { block: 0, final: 1, tool: 0 },
+          agentRunTerminalOutcome: "failed",
+        };
       });
       const messageContext = createMessageContext();
       messageContext.statusReactionController = statusReactionController as never;
@@ -152,7 +156,7 @@ describeTelegramDispatch("dispatchTelegramMessage draft-failures-progress", () =
         telegramCfg: { streaming: { mode: "partial" } },
       });
 
-      expect(partialAccepted).toBeUndefined();
+      expect(partialAccepted).toBe(true);
       expect(answerDraftStream.waitForInFlight).toHaveBeenCalledOnce();
       expect(answerDraftStream.update).toHaveBeenNthCalledWith(1, "partial answer");
       expect(answerDraftStream.update).toHaveBeenCalledTimes(2);
@@ -204,13 +208,8 @@ describeTelegramDispatch("dispatchTelegramMessage draft-failures-progress", () =
     const { answerDraftStream } = setupDraftStreams();
     let partialAccepted: boolean | void = undefined;
     dispatchReplyWithBufferedBlockDispatcher.mockImplementation(async (params) => {
-      return await dispatchReplyWithBufferedBlockDispatcherRuntime({
-        ...params,
-        replyResolver: async (_ctx, opts) => {
-          partialAccepted = await opts?.onPartialReply?.({ text: "partial answer" });
-          throw new Error("unexpected model failure");
-        },
-      });
+      partialAccepted = await params.replyOptions?.onPartialReply?.({ text: "partial answer" });
+      throw new Error("unexpected model failure");
     });
 
     await dispatchWithContext({
