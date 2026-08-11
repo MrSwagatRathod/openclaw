@@ -269,7 +269,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // including the side-question compatibility split.
       // +1: add the account-aware native approval request selector.
       // +3: add canonical coercion exports while retaining the shipped asString compatibility name.
-      4866,
+      // +1: QQBot 2.0.1 operator-approval Gateway client compatibility export.
+      4867,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -331,7 +332,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: channel-account-bound native approval request selection.
       // +1: add the account-aware native approval request selector.
       // +3: add canonical coercion exports while retaining the shipped asString compatibility name.
-      2922,
+      // +1: QQBot 2.0.1 operator-approval Gateway client compatibility export.
+      2923,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(
