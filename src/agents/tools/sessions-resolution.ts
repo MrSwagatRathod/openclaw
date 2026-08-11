@@ -381,10 +381,13 @@ async function resolveSessionReferenceByKeyOrSessionId(params: {
   forceSessionIdLookup?: boolean;
 }): Promise<SessionReferenceResolution | null> {
   if (!params.skipKeyLookup) {
+    const scopedAgentId = parseAgentSessionKey(params.raw)?.agentId;
     // Prefer key resolution to avoid misclassifying custom keys as sessionIds.
     const resolvedByKey = await resolveSessionKeyFromKey({
       key: params.raw,
-      agentId: params.keyAgentId,
+      // A scoped key owns its agent selection. The requester's prepared owner
+      // applies only to bare literals; visibility is checked after resolution.
+      agentId: scopedAgentId ?? params.keyAgentId,
       alias: params.alias,
       mainKey: params.mainKey,
       requesterInternalKey: params.requesterInternalKey,

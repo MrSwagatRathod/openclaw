@@ -6,6 +6,33 @@ import { baseOpenRequest, makeFakePty } from "./session-manager.test-helpers.js"
 const TERMINAL_EVENT_EXIT = "terminal.exit";
 
 describe("TerminalSessionManager task lifecycle", () => {
+  it("does not authorize interactive access through a colliding task id", async () => {
+    const fake = makeFakePty();
+    const manager = new TerminalSessionManager({ emit: vi.fn(), spawn: async () => fake });
+    const owner = {
+      kind: "agent",
+      agentSessionKey: "agent:ops:main",
+      agentId: "ops",
+      taskId: "agent:research:main",
+    } as const;
+    const opened = await manager.open(baseOpenRequest({ owner }));
+    if (!opened.ok) {
+      throw new Error("expected terminal session");
+    }
+
+    expect(manager.writeAgent("agent:research:main", opened.sessionId, "nope", "research")).toBe(
+      false,
+    );
+    expect(manager.resizeAgent("agent:research:main", opened.sessionId, 90, 30, "research")).toBe(
+      false,
+    );
+    expect(
+      manager.snapshotAgent("agent:research:main", opened.sessionId, "research"),
+    ).toBeUndefined();
+    expect(manager.closeAgent("agent:research:main", opened.sessionId, "research")).toBe(false);
+    expect(fake.killed).toBe(false);
+  });
+
   it("closes one task owner with viewer cleanup while preserving persistent owners", async () => {
     const emit = vi.fn();
     const runPtys = [makeFakePty(), makeFakePty()];

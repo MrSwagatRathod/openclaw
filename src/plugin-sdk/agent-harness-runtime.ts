@@ -348,6 +348,7 @@ export { assignSafeServerNames as assignMcpCatalogSafeServerNames } from "../age
  */
 export async function prepareHarnessNativeMcpAppPreview(params: {
   runtime: import("../agents/agent-bundle-mcp-types.js").SessionMcpRuntime;
+  agentId?: string;
   serverName: string;
   toolName: string;
   uiResourceUri: string;
@@ -364,6 +365,7 @@ export async function prepareHarnessNativeMcpAppPreview(params: {
     await import("../agents/mcp-ui-resource.js");
   const view = await fetchMcpAppView({
     runtime: params.runtime,
+    agentId: params.agentId,
     serverName: params.serverName,
     toolName: params.toolName,
     uiResourceUri: params.uiResourceUri,

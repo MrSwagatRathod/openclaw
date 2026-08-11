@@ -204,7 +204,7 @@ describe("ModelsListParamsSchema", () => {
         includeProviderCapabilities: true,
       },
     );
-    expectRejected(ModelsListParamsSchema, { view: "provider-route" });
+    expectRejected(ModelsListParamsSchema, { view: "provider-route" }, { agentId: "" });
   });
 });
 
