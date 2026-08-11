@@ -64,6 +64,7 @@ export function createSubagentRegistryLifecycleController(params: SubagentRegist
     refreshFrozenResultFromSession: delivery.refreshFrozenResultFromSession,
     settleRequesterTurnAfterSessionSpawns: (args: {
       requesterSessionKey: string;
+      requesterAgentId?: string;
       requesterTurnRunId: string;
       requesterYielded: boolean;
       acceptedSessionSpawns: readonly AcceptedSessionSpawn[];

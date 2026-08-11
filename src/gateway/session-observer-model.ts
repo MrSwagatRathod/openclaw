@@ -24,7 +24,7 @@ import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { AgentEventPayload } from "../infra/agent-events.js";
 import { pruneMapToMaxSize } from "../infra/map-size.js";
 import { redactToolPayloadText } from "../logging/redact.js";
-import { normalizeAgentId } from "../routing/session-key.js";
+import { normalizeAgentId, parseAgentSessionKey } from "../routing/session-key.js";
 import type {
   SessionEventSubscriberRegistry,
   SessionMessageSubscriberRegistry,
@@ -40,7 +40,9 @@ const MAX_DISABLED_RUNS = 512;
 export const SESSION_OBSERVER_MODEL_MAX_TOKENS = 300;
 
 export function sessionObserverScopeKey(sessionKey: string, agentId: string): string {
-  return sessionKey === "global" ? `agent:${normalizeAgentId(agentId)}:global` : sessionKey;
+  return parseAgentSessionKey(sessionKey)
+    ? sessionKey
+    : `agent:${normalizeAgentId(agentId)}:${sessionKey}`;
 }
 type PrepareModel = typeof prepareSimpleCompletionModelForAgent;
 type CompleteModel = typeof completeWithPreparedSimpleCompletionModel;

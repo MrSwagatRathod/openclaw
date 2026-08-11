@@ -5,6 +5,7 @@ import path from "node:path";
 import { expectDefined } from "@openclaw/normalization-core";
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 import { ErrorCodes, errorShape } from "../../../packages/gateway-protocol/src/index.js";
+import { AgentSelectionRequiredError } from "../../agents/agent-scope-config.js";
 import {
   listAgentIds,
   resolveAgentWorkspaceDir,
@@ -737,7 +738,21 @@ function resolveDoctorMemoryAgent(
   }
   const requestedAgentId =
     typeof rawAgentId === "string" ? normalizeAgentId(rawAgentId) : undefined;
-  const agentId = requestedAgentId ?? resolveDefaultAgentId(cfg);
+  let agentId = requestedAgentId;
+  if (!agentId) {
+    try {
+      agentId = resolveDefaultAgentId(cfg, {
+        surface: "doctor memory",
+        hint: "Pass agentId to select a configured agent.",
+      });
+    } catch (error) {
+      if (!(error instanceof AgentSelectionRequiredError)) {
+        throw error;
+      }
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, error.message));
+      return null;
+    }
+  }
   if (requestedAgentId && !listAgentIds(cfg).includes(agentId)) {
     respond(
       false,
@@ -1032,9 +1047,11 @@ export const doctorHandlers: GatewayRequestHandlers = {
     respond(true, payload, undefined);
   },
   "doctor.memory.remHarness": async ({ params, respond, context }) => {
-    const cfg = context.getRuntimeConfig();
-    const agentId = resolveDefaultAgentId(cfg);
-    const workspaceDir = resolveAgentWorkspaceDir(cfg, agentId);
+    const target = resolveDoctorMemoryTarget(context, params, respond);
+    if (!target) {
+      return;
+    }
+    const { cfg, agentId, workspaceDir } = target;
     const req = asOptionalRecord(params);
     const grounded = Boolean(req?.grounded);
     const includePromoted = Boolean(req?.includePromoted);

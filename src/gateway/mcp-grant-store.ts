@@ -14,6 +14,8 @@ import { resolveGlobalMap } from "../shared/global-singleton.js";
 export type McpLoopbackRequestContext = {
   sessionKey: string;
   runtimePolicySessionKey?: string;
+  /** Agent whose execution policy applies when it differs from the durable session owner. */
+  runtimePolicyAgentId?: string;
   agentId?: string;
   sessionId?: string;
   runId?: string;

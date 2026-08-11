@@ -125,6 +125,7 @@ export async function runAgentStep(params: {
   const result = await waitForAgentRunAndReadUpdatedAssistantReply({
     runId: resolvedRunId,
     sessionKey: params.sessionKey,
+    agentId: params.agentId,
     timeoutMs: Math.min(params.timeoutMs, 60_000),
   });
   if (result.status === "ok" || result.status === "error") {

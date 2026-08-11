@@ -225,7 +225,9 @@ vi.mock("../session-utils.js", async () => {
     const canonicalKey =
       typeof mockState.sessionEntry.canonicalKey === "string"
         ? mockState.sessionEntry.canonicalKey
-        : rawKey || "main";
+        : rawKey === "main"
+          ? `agent:${opts?.agentId ?? "main"}:${mockState.mainSessionKey}`
+          : rawKey || `agent:${opts?.agentId ?? "main"}:${mockState.mainSessionKey}`;
     const entry = mockState.sessionMissing
       ? undefined
       : {
@@ -881,10 +883,10 @@ function expectUserUpdateIdentity(update: ReturnType<typeof findUserUpdate>) {
   expect(update?.target).toEqual({
     agentId: "main",
     sessionId: mockState.sessionId,
-    sessionKey: "main",
+    sessionKey: "agent:main:main",
     storePath: mockState.storePath,
   });
-  expect(update?.sessionKey).toBe("main");
+  expect(update?.sessionKey).toBe("agent:main:main");
   expect(update?.agentId).toBe("main");
 }
 
@@ -1417,7 +1419,7 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
     const { context, respond, send } = createChatRequestFixture();
     const queueMessage = vi.fn(async () => {});
     const operation = replyRunRegistry.begin({
-      sessionKey: "main",
+      sessionKey: "agent:main:main",
       sessionId: mockState.sessionId,
       resetTriggered: false,
     });
@@ -1459,7 +1461,7 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
     const { context, respond, send } = createChatRequestFixture();
     const queueMessage = vi.fn(async () => {});
     const operation = replyRunRegistry.begin({
-      sessionKey: "main",
+      sessionKey: "agent:main:main",
       sessionId: mockState.sessionId,
       resetTriggered: false,
       originatingLeafEntryId: "current-leaf",
@@ -1503,7 +1505,7 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
     const { context, respond, send } = createChatRequestFixture();
     const queueMessage = vi.fn(async () => {});
     const operation = replyRunRegistry.begin({
-      sessionKey: "main",
+      sessionKey: "agent:main:main",
       sessionId: mockState.sessionId,
       resetTriggered: false,
       originatingLeafEntryId: "different-owner-leaf",
@@ -1547,7 +1549,7 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
     const originalQueue = vi.fn(async () => {});
     const successorQueue = vi.fn(async () => {});
     const original = replyRunRegistry.begin({
-      sessionKey: "main",
+      sessionKey: "agent:main:main",
       sessionId: mockState.sessionId,
       resetTriggered: false,
       originatingLeafEntryId: "current-leaf",
@@ -1589,7 +1591,7 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
         async () => {
           original.complete();
           successor = replyRunRegistry.begin({
-            sessionKey: "main",
+            sessionKey: "agent:main:main",
             sessionId: mockState.sessionId,
             resetTriggered: false,
             originatingLeafEntryId: "current-leaf",
@@ -1629,7 +1631,7 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
     });
     const { context, respond, send } = createChatRequestFixture();
     const operation = replyRunRegistry.begin({
-      sessionKey: "main",
+      sessionKey: "agent:main:main",
       sessionId: mockState.sessionId,
       resetTriggered: false,
       originatingLeafEntryId: "leaf-before-active-run-output",
@@ -1680,7 +1682,7 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
     const { context, respond, send } = createChatRequestFixture();
     const delivery = createDeferred();
     const operation = replyRunRegistry.begin({
-      sessionKey: "main",
+      sessionKey: "agent:main:main",
       sessionId: mockState.sessionId,
       resetTriggered: false,
       originatingLeafEntryId: null,
@@ -1731,7 +1733,7 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
     const { context, send } = createChatRequestFixture();
     const dispatchCallsBefore = dispatchInboundMessageMock.mock.calls.length;
     const operation = replyRunRegistry.begin({
-      sessionKey: "main",
+      sessionKey: "agent:main:main",
       sessionId: mockState.sessionId,
       resetTriggered: false,
       originatingLeafEntryId: null,
@@ -1813,7 +1815,7 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
       await options?.userTurnTranscriptRecorder?.persistApproved();
     });
     const operation = replyRunRegistry.begin({
-      sessionKey: "main",
+      sessionKey: "agent:main:main",
       sessionId: mockState.sessionId,
       resetTriggered: false,
       originatingLeafEntryId: "current-leaf",
@@ -1868,7 +1870,7 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
     const successorQueue = vi.fn(async () => {});
     const successorCancel = vi.fn();
     const original = replyRunRegistry.begin({
-      sessionKey: "main",
+      sessionKey: "agent:main:main",
       sessionId: mockState.sessionId,
       resetTriggered: false,
       originatingLeafEntryId: "current-leaf",
@@ -1895,7 +1897,7 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
       await waitForAssertion(() => expect(mockState.replyContextCalls).toBe(1));
       original.complete();
       successor = replyRunRegistry.begin({
-        sessionKey: "main",
+        sessionKey: "agent:main:main",
         sessionId: mockState.sessionId,
         resetTriggered: false,
         originatingLeafEntryId: "current-leaf",
@@ -1947,7 +1949,7 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
     const dispatchCallsBefore = dispatchInboundMessageMock.mock.calls.length;
     const delivery = createDeferred();
     const operation = replyRunRegistry.begin({
-      sessionKey: "main",
+      sessionKey: "agent:main:main",
       sessionId: mockState.sessionId,
       resetTriggered: false,
       originatingLeafEntryId: null,
@@ -1994,7 +1996,7 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
       errorMessage: string;
     }>();
     const first = replyRunRegistry.begin({
-      sessionKey: "main",
+      sessionKey: "agent:main:main",
       sessionId: mockState.sessionId,
       resetTriggered: false,
       originatingLeafEntryId: null,
@@ -2015,7 +2017,7 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
     first.complete();
     const successorCancel = vi.fn();
     const successor = replyRunRegistry.begin({
-      sessionKey: "main",
+      sessionKey: "agent:main:main",
       sessionId: mockState.sessionId,
       resetTriggered: false,
       originatingLeafEntryId: null,
@@ -2049,7 +2051,7 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
     const { respond, send } = createChatRequestFixture();
     const dispatchCallsBefore = dispatchInboundMessageMock.mock.calls.length;
     const operation = replyRunRegistry.begin({
-      sessionKey: "main",
+      sessionKey: "agent:main:main",
       sessionId: mockState.sessionId,
       resetTriggered: false,
       originatingLeafEntryId: null,
@@ -2089,7 +2091,7 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
     await createGatewayUserTurnSqliteFixture("openclaw-chat-send-steer-run-changed-");
     const { context, respond, send } = createChatRequestFixture();
     const operation = replyRunRegistry.begin({
-      sessionKey: "main",
+      sessionKey: "agent:main:main",
       sessionId: mockState.sessionId,
       resetTriggered: false,
       originatingLeafEntryId: "leaf-before-active-run-output",
@@ -2135,7 +2137,7 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
     const { context, respond, send } = createChatRequestFixture();
     vi.useFakeTimers({ toFake: ["Date"] });
     const operation = replyRunRegistry.begin({
-      sessionKey: "main",
+      sessionKey: "agent:main:main",
       sessionId: mockState.sessionId,
       resetTriggered: false,
       originatingLeafEntryId: "leaf-before-stale-run-output",
@@ -2205,7 +2207,7 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
     const payload = call?.[1] as { ts?: unknown } | undefined;
     expect(call?.[0]).toBe("sessions.changed");
     expect(call?.[2]).toEqual(new Set(["conn-1"]));
-    expect(call?.[3]).toEqual({ dropIfSlow: true });
+    expect(call?.[3]).toEqual({ agentId: "main", dropIfSlow: true });
     expect(payload).toMatchObject({
       sessionKey: "agent:main:main",
       reason: "command-metadata",
@@ -2445,7 +2447,7 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
     context.chatAbortControllers.set("run-same-session", {
       controller: new AbortController(),
       sessionId: "sess-prev",
-      sessionKey: "main",
+      sessionKey: "agent:main:main",
       startedAtMs: Date.now(),
       expiresAtMs: Date.now() + 10_000,
     });
@@ -3121,12 +3123,12 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
 
     expect(broadcast).toMatchObject({
       runId: "idem-agent-source-reply",
-      sessionKey: "main",
+      sessionKey: "agent:main:main",
       state: "final",
     });
     expect(extractFirstTextBlock(broadcast)).toBe("Codex source reply");
     const nodeSend = lastNodeSendCall(context);
-    expect(nodeSend?.[0]).toBe("main");
+    expect(nodeSend?.[0]).toBe("agent:main:main");
     expect(nodeSend?.[1]).toBe("chat");
     expect(extractFirstTextBlock(nodeSend?.[2])).toBe("Codex source reply");
     const assistantUpdates = findAssistantTranscriptUpdates();
@@ -3158,7 +3160,7 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
 
     expect(broadcast).toMatchObject({
       runId: "idem-agent-status-notice",
-      sessionKey: "main",
+      sessionKey: "agent:main:main",
       state: "final",
     });
     expect(extractFirstTextBlock(broadcast)).toBe("⚙️ Codex compaction started • Context 2k/200k");
@@ -3193,7 +3195,7 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
 
     expect(broadcast).toMatchObject({
       runId: "idem-agent-block-status-notice",
-      sessionKey: "main",
+      sessionKey: "agent:main:main",
       state: "final",
     });
     expect(extractFirstTextBlock(broadcast)).toBe("Model set to openai/gpt-5.5 for this session.");
@@ -3285,7 +3287,7 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
 
           expect(broadcast).toMatchObject({
             runId: "idem-agent-source-reply-media",
-            sessionKey: "main",
+            sessionKey: "agent:main:main",
             state: "final",
           });
           expect(extractFirstTextBlock(broadcast)).toBe("Codex source reply with media");
@@ -3917,7 +3919,7 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
 
     expect(broadcast).toMatchObject({
       runId: "idem-agent-source-reply-error",
-      sessionKey: "main",
+      sessionKey: "agent:main:main",
       state: "final",
     });
     expect(extractFirstTextBlock(broadcast)).toBe("Codex source reply");
@@ -4013,7 +4015,7 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
 
     expect(broadcast).toMatchObject({
       runId: "idem-agent-status-notice-error",
-      sessionKey: "main",
+      sessionKey: "agent:main:main",
       state: "error",
       errorMessage,
     });
@@ -4046,7 +4048,7 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
 
     expect(broadcast).toMatchObject({
       runId: "idem-agent-returned-error",
-      sessionKey: "main",
+      sessionKey: "agent:main:main",
       state: "error",
       errorMessage,
     });

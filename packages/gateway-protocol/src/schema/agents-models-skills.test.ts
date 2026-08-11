@@ -200,6 +200,7 @@ describe("ModelsListParamsSchema", () => {
       { view: "provider-config" },
       {
         view: "all",
+        agentId: "research",
         includeProviderCapabilities: true,
       },
     );

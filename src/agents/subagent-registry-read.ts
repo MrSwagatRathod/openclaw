@@ -47,10 +47,14 @@ export function buildLatestSubagentRunReadIndex(): LatestSubagentRunReadIndex {
 }
 
 /** Lists runs controlled by a session key. */
-export function listSubagentRunsForController(controllerSessionKey: string): SubagentRunRecord[] {
+export function listSubagentRunsForController(
+  controllerSessionKey: string,
+  controllerAgentId?: string,
+): SubagentRunRecord[] {
   return listRunsForControllerFromRuns(
     getSubagentRunsSnapshotForController(subagentRuns, controllerSessionKey),
     controllerSessionKey,
+    controllerAgentId,
   );
 }
 

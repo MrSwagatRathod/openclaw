@@ -31,6 +31,7 @@ export type CronCreatorToolAuthoritySnapshot = CronCreatorToolAuthorityMateriali
 
 export type CronToolOptions = {
   agentSessionKey?: string;
+  agentId?: string;
   /** Authenticated source account; authority must not be inferred from delivery. */
   agentAccountId?: string;
   currentDeliveryContext?: DeliveryContext;

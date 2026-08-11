@@ -3,7 +3,6 @@ import { AGENT_RUN_RESTART_ABORT_STOP_REASON } from "../../agents/run-terminatio
 import { resolveAgentTimeoutMs } from "../../agents/timeout.js";
 import { getAgentEventLifecycleGeneration } from "../../infra/agent-events.js";
 import { resolveAgentRunExpiresAtMs } from "../chat-abort.js";
-import { resolveSessionStoreKey } from "../session-utils.js";
 import {
   isAcceptedAgentDedupePayload,
   isPreRegistrationAbortedAgentDedupeEntryForSession,
@@ -45,9 +44,6 @@ export function createAgentDedupeLifecycle(params: {
     if (reserved) {
       return;
     }
-    const dedupeSessionResolvesGlobal = sessionKey
-      ? resolveSessionStoreKey({ cfg: params.cfg, sessionKey }) === "global"
-      : false;
     const acceptedAt = Date.now();
     const pendingTimeoutMs = resolveAgentTimeoutMs({
       cfg: params.cfg,
@@ -65,9 +61,7 @@ export function createAgentDedupeLifecycle(params: {
           reservationId,
           status: "accepted" as const,
           ...(sessionKey ? { sessionKey } : {}),
-          ...(dedupeAgentId && (!sessionKey || dedupeSessionResolvesGlobal)
-            ? { agentId: dedupeAgentId }
-            : {}),
+          ...(dedupeAgentId ? { agentId: dedupeAgentId } : {}),
           controlUiVisible: !params.suppressVisibleSessionEffects,
           acceptedAt,
           dedupeKeys: params.agentDedupeKeys,
@@ -128,9 +122,7 @@ export function createAgentDedupeLifecycle(params: {
       params.respond(true, responsePayload, undefined, { runId: params.runId });
       emitSessionsChanged(params.context, {
         sessionKey: completion.sessionKey,
-        ...(completion.sessionKey === "global" && completion.agentId
-          ? { agentId: completion.agentId }
-          : {}),
+        ...(completion.agentId ? { agentId: completion.agentId } : {}),
         reason: completion.reason,
       });
       return true;

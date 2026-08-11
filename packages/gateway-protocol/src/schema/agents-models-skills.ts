@@ -228,6 +228,7 @@ export const AgentsFilesSetResultSchema = closedObject({
 
 /** Model catalog request with optional visibility scope. */
 export const ModelsListParamsSchema = closedObject({
+  agentId: Type.Optional(Type.String()),
   includeProviderCapabilities: Type.Optional(Type.Boolean()),
   view: Type.Optional(
     Type.Union([

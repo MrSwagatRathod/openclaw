@@ -277,13 +277,13 @@ export class ChatPane extends ChatPaneBrowserAnnotationRender {
       observerLastReadAt: selectedSession?.lastReadAt,
       sessionRailCompanion: catalogKey
         ? undefined
-        : this.sessionCompanionThreads.view(state.sessionKey),
+        : this.sessionCompanionThreads.view(state.sessionKey, state.assistantAgentId),
       ...this.sessionRailOpenRequestProps(state.sessionKey),
       sessionRailMode: selectedSessionRailMode,
       sessionRailDocked: !catalogKey && chatMainWidth >= SESSION_RAIL_DOCK_MIN_WIDTH,
       onSessionRailSubmit: (question) => void this.submitSessionCompanionQuestion(question),
       onSessionRailDraftChange: (draft) =>
-        this.sessionCompanionThreads.setDraft(state.sessionKey, draft),
+        this.sessionCompanionThreads.setDraft(state.sessionKey, draft, state.assistantAgentId),
       onSessionRailClear: () => void this.clearSessionCompanion(),
       onSessionRailModeChange: (mode) => {
         if (state.sessionKey !== this.sessionRailModeSessionKey || mode !== this.sessionRailMode) {

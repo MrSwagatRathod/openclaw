@@ -6,6 +6,7 @@ import type {
   SubagentRegistryLifecycleState,
 } from "./subagent-registry-lifecycle-contracts.js";
 import type { RequesterSettleWakeState, SubagentRunRecord } from "./subagent-registry.types.js";
+import { resolveSubagentRequesterAgentId } from "./subagent-requester-owner.js";
 
 type RequesterSettleWakeBatchState =
   import("./subagent-announce.requester-settle-wake.js").RequesterSettleWakeBatchState;
@@ -21,6 +22,8 @@ export function createSubagentRegistryLifecycleRequesterWake(
     scheduledRequesterSettleWakeTimers,
   } = lifecycleState;
   const { buildSafeLifecycleErrorMeta, maskRunId, maskSessionKey } = common;
+  const resolveRequesterAgentId = (entry: SubagentRunRecord) =>
+    resolveSubagentRequesterAgentId(params.getRuntimeConfig(), entry);
 
   const transitionRequesterSettleWakeBatch = (
     runIds: readonly string[],
@@ -69,7 +72,12 @@ export function createSubagentRegistryLifecycleRequesterWake(
     if (entries.length === 0) {
       return;
     }
-    const requesterSessionKeys = new Set(entries.map(([, entry]) => entry.requesterSessionKey));
+    const requesterIdentities = new Set(
+      entries.map(
+        ([, entry]) =>
+          `${resolveRequesterAgentId(entry) ?? "unknown"}\0${entry.requesterSessionKey}`,
+      ),
+    );
     const previousStates = entries.map(([, entry]) => ({
       requesterSettleWake: structuredClone(entry.requesterSettleWake),
       retireAfterRequesterTurn: entry.retireAfterRequesterTurn,
@@ -111,7 +119,12 @@ export function createSubagentRegistryLifecycleRequesterWake(
       }
     }
     for (const [runId, entry] of params.runs) {
-      if (entry.requesterSettleWake && requesterSessionKeys.has(entry.requesterSessionKey)) {
+      if (
+        entry.requesterSettleWake &&
+        requesterIdentities.has(
+          `${resolveRequesterAgentId(entry) ?? "unknown"}\0${entry.requesterSessionKey}`,
+        )
+      ) {
         scheduleRequesterSettleWake(runId, entry);
       }
     }

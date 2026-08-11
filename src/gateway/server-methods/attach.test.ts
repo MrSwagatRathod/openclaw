@@ -25,6 +25,17 @@ const grantOpts = (sessionKey: string, respond: ReturnType<typeof vi.fn>) =>
     context: { getRuntimeConfig: () => ({}) },
   }) as unknown as GatewayRequestHandlerOptions;
 
+const grantWithAgentOpts = (agentId: string, respond: ReturnType<typeof vi.fn>) =>
+  ({
+    params: { agentId },
+    respond,
+    context: {
+      getRuntimeConfig: () => ({
+        agents: { ownership: "explicit", list: [{ id: agentId }, { id: "other" }] },
+      }),
+    },
+  }) as unknown as GatewayRequestHandlerOptions;
+
 describe("attach gateway methods", () => {
   beforeEach(() => {
     loadSessionEntryMock.mockReset();
@@ -60,6 +71,19 @@ describe("attach gateway methods", () => {
     expect(body.env.OPENCLAW_MCP_TOKEN).toBe(body.token);
     expect(Object.keys(body.env)).toEqual(["OPENCLAW_MCP_TOKEN"]);
     expect(resolveAttachGrant(body.token)?.sessionKey).toBe("agent:main:attach-method");
+  });
+
+  it("uses an explicit agent for an omitted session key", async () => {
+    const respond = vi.fn();
+    await expectDefined(
+      attachHandlers["attach.grant"],
+      'attachHandlers["attach.grant"] test invariant',
+    )(grantWithAgentOpts("research", respond));
+
+    expect(respond.mock.calls[0]?.[0]).toBe(true);
+    expect((respond.mock.calls[0]?.[1] as { sessionKey?: string }).sessionKey).toBe(
+      "agent:research:main",
+    );
   });
 
   it("rejects attach grants for reserved harness sessions", async () => {

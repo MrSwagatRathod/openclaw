@@ -522,6 +522,7 @@ export function createSubagentRegistryLifecycleCleanup(
       childSessionKey: pendingPayload.childSessionKey,
       childRunId: pendingPayload.childRunId,
       requesterSessionKey: pendingPayload.requesterSessionKey,
+      requesterAgentId: entry.requesterAgentId,
       requesterOrigin,
       requesterDisplayKey: pendingPayload.requesterDisplayKey,
       task: pendingPayload.task,

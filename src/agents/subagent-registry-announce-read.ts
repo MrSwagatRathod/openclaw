@@ -21,6 +21,7 @@ import type { SubagentRunRecord } from "./subagent-registry.types.js";
 /** Resolves the requester session and origin for a child subagent session. */
 export function resolveRequesterForChildSession(childSessionKey: string): {
   requesterSessionKey: string;
+  requesterAgentId?: string;
   requesterOrigin?: DeliveryContext;
 } | null {
   const resolved = resolveRequesterForChildSessionFromRuns(
@@ -32,6 +33,7 @@ export function resolveRequesterForChildSession(childSessionKey: string): {
   }
   return {
     requesterSessionKey: resolved.requesterSessionKey,
+    requesterAgentId: resolved.requesterAgentId,
     requesterOrigin: normalizeDeliveryContext(resolved.requesterOrigin),
   };
 }
@@ -52,7 +54,7 @@ export function shouldIgnorePostCompletionAnnounceForSession(childSessionKey: st
 /** Lists subagent runs requested by one session key. */
 export function listSubagentRunsForRequester(
   requesterSessionKey: string,
-  options?: { requesterRunId?: string },
+  options?: { requesterRunId?: string; requesterAgentId?: string },
 ): SubagentRunRecord[] {
   return listRunsForRequesterFromRuns(subagentRuns, requesterSessionKey, options);
 }
@@ -81,10 +83,12 @@ export function countPendingDescendantRunsExcludingRun(
 export function hasDescendantRunAwaitingSettle(
   rootSessionKey: string,
   excludeRunId?: string,
+  requesterAgentId?: string,
 ): boolean {
   return hasDescendantRunAwaitingSettleFromRuns(
     getSubagentRunsSnapshotForRead(subagentRuns),
     rootSessionKey,
     excludeRunId,
+    requesterAgentId,
   );
 }

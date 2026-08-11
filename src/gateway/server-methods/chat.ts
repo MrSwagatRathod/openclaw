@@ -20,7 +20,10 @@ import {
 } from "../session-utils.js";
 import { formatForLog } from "../ws-log.js";
 import { handleChatAbortRequest } from "./chat-abort-handler.js";
-import { sendGlobalAwareNodeChatPayload } from "./chat-broadcast.js";
+import {
+  resolveGlobalAwareNodeChatDeliveryKeys,
+  sendGlobalAwareNodeChatPayload,
+} from "./chat-broadcast.js";
 import { chatHistoryHandlers } from "./chat-history-handler.js";
 import { chatMessageGetHandlers } from "./chat-message-get-handler.js";
 import { resolveRequestedChatAgentId, validateChatSelectedAgent } from "./chat-origin-routing.js";
@@ -216,13 +219,13 @@ export const chatHandlers: GatewayRequestHandlers = {
     const chatPayload = {
       runId: `inject-${appended.messageId}`,
       sessionKey,
-      ...(sessionKey === "global" && agentId ? { agentId } : {}),
+      ...(agentId ? { agentId } : {}),
       seq: 0,
       state: "final" as const,
       message,
     };
     context.broadcast("chat", chatPayload, {
-      sessionKeys: sessionKey === "global" && agentId ? [`agent:${agentId}:global`] : [sessionKey],
+      sessionKeys: resolveGlobalAwareNodeChatDeliveryKeys({ cfg, sessionKey, agentId }),
     });
     sendGlobalAwareNodeChatPayload({
       context,

@@ -21,6 +21,7 @@ import {
   isAcpSessionKey,
   isIncognitoSessionKey,
   normalizeMainKey,
+  parseAgentSessionKey,
 } from "../../routing/session-key.js";
 import { looksLikeSessionId } from "../../sessions/session-id.js";
 
@@ -95,10 +96,15 @@ export function resolveCurrentSessionClientAlias(params: {
 
 async function isRequesterSpawnedSessionVisible(params: {
   requesterSessionKey: string;
+  requesterAgentId: string;
   targetSessionKey: string;
+  targetAgentId?: string;
   limit?: number;
 }): Promise<boolean> {
-  if (params.requesterSessionKey === params.targetSessionKey) {
+  if (
+    params.requesterSessionKey === params.targetSessionKey &&
+    params.targetAgentId === params.requesterAgentId
+  ) {
     return true;
   }
   try {
@@ -106,6 +112,7 @@ async function isRequesterSpawnedSessionVisible(params: {
       method: "sessions.resolve",
       params: {
         key: params.targetSessionKey,
+        agentId: params.targetAgentId,
         spawnedBy: params.requesterSessionKey,
       },
     });
@@ -119,7 +126,10 @@ async function isRequesterSpawnedSessionVisible(params: {
     requesterSessionKey: params.requesterSessionKey,
     limit: params.limit,
   });
-  return keys.has(params.targetSessionKey);
+  return (
+    (!params.targetAgentId || params.targetAgentId === params.requesterAgentId) &&
+    keys.has(params.targetSessionKey)
+  );
 }
 
 function looksLikeSessionKey(value: string): boolean {
@@ -360,6 +370,7 @@ async function tryResolveSessionKeyFromSessionId(params: {
 async function resolveSessionReferenceByKeyOrSessionId(params: {
   raw: string;
   agentId?: string;
+  keyAgentId?: string;
   alias: string;
   mainKey: string;
   requesterInternalKey?: string;
@@ -373,7 +384,7 @@ async function resolveSessionReferenceByKeyOrSessionId(params: {
     // Prefer key resolution to avoid misclassifying custom keys as sessionIds.
     const resolvedByKey = await resolveSessionKeyFromKey({
       key: params.raw,
-      agentId: params.agentId,
+      agentId: params.keyAgentId,
       alias: params.alias,
       mainKey: params.mainKey,
       requesterInternalKey: params.requesterInternalKey,
@@ -411,6 +422,8 @@ async function resolveSessionReferenceByKeyOrSessionId(params: {
 
 export async function resolveSessionReference(params: {
   sessionKey: string;
+  /** Owner already selected for literal key lookup; session-id lookup remains cross-agent. */
+  keyAgentId?: string;
   agentId?: string;
   alias: string;
   mainKey: string;
@@ -422,29 +435,13 @@ export async function resolveSessionReference(params: {
       key: params.sessionKey,
       requesterInternalKey: params.requesterInternalKey,
     }) ?? params.sessionKey.trim();
-  if (rawInput === "current") {
-    const resolvedCurrent = await resolveSessionReferenceByKeyOrSessionId({
-      raw: rawInput,
-      agentId: params.agentId,
-      alias: params.alias,
-      mainKey: params.mainKey,
-      requesterInternalKey: params.requesterInternalKey,
-      restrictToSpawned: params.restrictToSpawned,
-      allowUnresolvedSessionId: true,
-      allowMissing: true,
-      skipKeyLookup: params.restrictToSpawned,
-      forceSessionIdLookup: true,
-    });
-    if (resolvedCurrent) {
-      return resolvedCurrent;
-    }
-  }
   const raw =
     rawInput === "current" && params.requesterInternalKey ? params.requesterInternalKey : rawInput;
   if (shouldResolveSessionIdInput(raw)) {
     const resolvedByGateway = await resolveSessionReferenceByKeyOrSessionId({
       raw,
       agentId: params.agentId,
+      keyAgentId: params.keyAgentId ?? params.agentId,
       alias: params.alias,
       mainKey: params.mainKey,
       requesterInternalKey: params.requesterInternalKey,
@@ -474,10 +471,13 @@ export async function resolveVisibleSessionReference(params: {
   action: "history" | "send" | "status" | "list";
   resolvedSession: Extract<SessionReferenceResolution, { ok: true }>;
   requesterSessionKey: string;
+  requesterAgentId: string;
   restrictToSpawned: boolean;
   visibilitySessionKey: string;
 }): Promise<VisibleSessionReferenceResolution> {
   const resolvedKey = params.resolvedSession.key;
+  const resolvedAgentId =
+    params.resolvedSession.agentId ?? parseAgentSessionKey(resolvedKey)?.agentId;
   const displayKey = params.resolvedSession.displayKey;
   // Cross-session tools persist their results into the caller transcript; an
   // incognito target must remain unreachable even from an incognito requester.
@@ -492,7 +492,7 @@ export async function resolveVisibleSessionReference(params: {
   const shouldVerifySpawnedVisibility =
     params.restrictToSpawned &&
     !params.resolvedSession.resolvedViaSessionId &&
-    params.requesterSessionKey !== resolvedKey;
+    (params.requesterSessionKey !== resolvedKey || resolvedAgentId !== params.requesterAgentId);
   const scopedAccess =
     params.action === "list"
       ? undefined
@@ -506,7 +506,9 @@ export async function resolveVisibleSessionReference(params: {
     !shouldVerifySpawnedVisibility ||
     (await isRequesterSpawnedSessionVisible({
       requesterSessionKey: params.requesterSessionKey,
+      requesterAgentId: params.requesterAgentId,
       targetSessionKey: resolvedKey,
+      targetAgentId: resolvedAgentId,
     }));
   if (!visible) {
     return {
@@ -518,7 +520,7 @@ export async function resolveVisibleSessionReference(params: {
   }
   return {
     ok: true,
-    ...(params.resolvedSession.agentId ? { agentId: params.resolvedSession.agentId } : {}),
+    ...(resolvedAgentId ? { agentId: resolvedAgentId } : {}),
     key: resolvedKey,
     displayKey,
   };

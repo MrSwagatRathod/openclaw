@@ -108,6 +108,7 @@ describe("terminal tool", () => {
         terminalSessionId: sessionId,
       },
       sessionKey: "agent:main:main",
+      agentId: "main",
     });
 
     backend.emitData("\u001b[31mready\u001b[0m\r\n");
@@ -158,7 +159,7 @@ describe("terminal tool", () => {
 
     await tool.execute("open", { action: "open", show: false });
 
-    expect(resolveTaskOwnerId).toHaveBeenCalledWith("agent:main:task-run");
+    expect(resolveTaskOwnerId).toHaveBeenCalledWith("agent:main:task-run", "main");
     expect(manager.closeAgentSessions("task-1")).toBe(1);
     expect(backend.killed).toBe(true);
   });

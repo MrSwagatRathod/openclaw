@@ -11,7 +11,6 @@ import {
   parseAgentSessionKey,
 } from "../../routing/session-key.js";
 import { truncateUtf16Safe } from "../../utils.js";
-import { resolveDefaultAgentId } from "../agent-scope-config.js";
 import { resolveSessionAgentId } from "../agent-scope.js";
 import { optionalPositiveIntegerSchema } from "../schema/typebox.js";
 import {
@@ -20,6 +19,7 @@ import {
 } from "../tool-description-presets.js";
 import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readPositiveIntegerParam, readStringParam, ToolInputError } from "./common.js";
+import { resolveSessionToolTargetAgentId } from "./scoped-session-access.js";
 import {
   createAgentToAgentPolicy,
   createSessionVisibilityGuard,
@@ -356,11 +356,33 @@ export function createSessionsSearchTool(opts?: {
           agentSessionKey: opts?.agentSessionKey,
           sandboxed: opts?.sandboxed,
         });
+      const requesterAgentId = resolveSessionAgentId({
+        sessionKey: effectiveRequesterKey,
+        config: cfg,
+        agentId: opts?.agentId,
+      });
 
       let sessionKey: string | undefined;
+      let sessionAgentId: string | undefined;
       if (requestedSessionKey) {
+        const normalizedRequestedKey = requestedSessionKey.trim();
+        const semanticTargetAgentId =
+          normalizedRequestedKey === "current"
+            ? requesterAgentId
+            : normalizedRequestedKey === "main" ||
+                normalizedRequestedKey === "global" ||
+                normalizedRequestedKey === mainKey ||
+                normalizedRequestedKey === alias ||
+                Boolean(parseAgentSessionKey(normalizedRequestedKey))
+              ? resolveSessionToolTargetAgentId({
+                  cfg,
+                  targetSessionKey: normalizedRequestedKey,
+                  requesterAgentId,
+                })
+              : undefined;
         const resolved = await resolveSessionReference({
           sessionKey: requestedSessionKey,
+          keyAgentId: semanticTargetAgentId ?? requesterAgentId,
           alias,
           mainKey,
           requesterInternalKey: effectiveRequesterKey,
@@ -373,6 +395,7 @@ export function createSessionsSearchTool(opts?: {
           action: "list",
           resolvedSession: resolved,
           requesterSessionKey: effectiveRequesterKey,
+          requesterAgentId,
           restrictToSpawned,
           visibilitySessionKey: requestedSessionKey,
         });
@@ -380,6 +403,12 @@ export function createSessionsSearchTool(opts?: {
           return jsonResult({ status: visible.status, error: visible.error });
         }
         sessionKey = visible.key;
+        sessionAgentId = resolveSessionToolTargetAgentId({
+          cfg,
+          targetSessionKey: visible.key,
+          resolvedAgentId: visible.agentId ?? semanticTargetAgentId,
+          requesterAgentId,
+        });
       }
 
       const visibility = resolveEffectiveSessionToolsVisibility({
@@ -387,9 +416,7 @@ export function createSessionsSearchTool(opts?: {
         sandboxed: opts?.sandboxed === true,
       });
       const a2aPolicy = createAgentToAgentPolicy(cfg);
-      const defaultAgentId = resolveDefaultAgentId(cfg);
-      const requesterAgentId =
-        opts?.agentId ?? resolveSessionAgentId({ sessionKey: effectiveRequesterKey, config: cfg });
+      const defaultAgentId = requesterAgentId;
       const guard = await createSessionVisibilityGuard({
         action: "history",
         defaultAgentId,
@@ -408,7 +435,7 @@ export function createSessionsSearchTool(opts?: {
       });
       if (sessionKey) {
         const access = !parseAgentSessionKey(sessionKey)
-          ? rowGuard.check({ key: sessionKey, agentId: requesterAgentId })
+          ? rowGuard.check({ key: sessionKey, agentId: sessionAgentId })
           : guard.check(sessionKey);
         if (!access.allowed) {
           return jsonResult({ status: access.status, error: access.error });
@@ -420,7 +447,9 @@ export function createSessionsSearchTool(opts?: {
               {
                 key: sessionKey,
                 access: "direct" as const,
-                ...(!parseAgentSessionKey(sessionKey) ? { agentId: requesterAgentId } : {}),
+                ...(!parseAgentSessionKey(sessionKey) && sessionAgentId
+                  ? { agentId: sessionAgentId }
+                  : {}),
               },
             ]
           : await listVisibleSearchSessions({

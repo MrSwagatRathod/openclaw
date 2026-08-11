@@ -5,6 +5,7 @@
  * this module selects a drained wave and delivers its synthesized wake.
  */
 import { SILENT_REPLY_TOKEN } from "../auto-reply/tokens.js";
+import { getRuntimeConfig } from "../config/config.js";
 import { logWarn } from "../logger.js";
 import { isCronSessionKey } from "../sessions/session-key-utils.js";
 import { createLazyImportLoader } from "../shared/lazy-promise.js";
@@ -27,6 +28,7 @@ import {
 import { hasUsableSessionEntry } from "./subagent-announce.js";
 import { getSubagentDepthFromSessionStore } from "./subagent-depth.js";
 import type { RequesterSettleWakeState, SubagentRunRecord } from "./subagent-registry.types.js";
+import { resolveSubagentRequesterAgentId } from "./subagent-requester-owner.js";
 import { hasSubagentRunEnded } from "./subagent-run-liveness.js";
 
 const subagentRegistryRuntimeLoader = createLazyImportLoader(
@@ -220,6 +222,8 @@ export async function maybeWakeRequesterAfterAllChildrenSettled(params: {
     params.completeBatch(runIds, rearmGeneration);
   };
   const requesterSessionKey = params.requesterSessionKey.trim();
+  const cfg = getRuntimeConfig();
+  const requesterAgentId = resolveSubagentRequesterAgentId(cfg, params.settledEntry);
   const initialState = params.settledEntry.requesterSettleWake;
   if (!requesterSessionKey || !initialState) {
     return false;
@@ -235,7 +239,9 @@ export async function maybeWakeRequesterAfterAllChildrenSettled(params: {
   }
 
   const registryRuntime = await requesterSettleWakeDeps.loadSubagentRegistryRuntime();
-  const listedRuns = registryRuntime.listSubagentRunsForRequester(requesterSessionKey);
+  const listedRuns = registryRuntime.listSubagentRunsForRequester(requesterSessionKey, {
+    requesterAgentId,
+  });
   const requesterRuns = Array.isArray(listedRuns) ? listedRuns : [];
   const currentSettledEntry =
     requesterRuns.find((entry) => entry.runId === params.settledEntry.runId) ?? params.settledEntry;
@@ -246,7 +252,11 @@ export async function maybeWakeRequesterAfterAllChildrenSettled(params: {
     return false;
   }
   const requesterHasUnsettledDescendants = () =>
-    registryRuntime.hasDescendantRunAwaitingSettle(requesterSessionKey, currentSettledEntry.runId);
+    registryRuntime.hasDescendantRunAwaitingSettle(
+      requesterSessionKey,
+      currentSettledEntry.runId,
+      requesterAgentId,
+    );
 
   const frozenBatchRunIds = currentState.batchRunIds;
   const currentRearmGeneration = currentState.rearmGeneration;
@@ -300,7 +310,10 @@ export async function maybeWakeRequesterAfterAllChildrenSettled(params: {
     (requiredSettled.length < 2 &&
       !hasUndeliveredRequiredCompletion &&
       !requesterYieldedAfterDelivery) ||
-    getSubagentDepthFromSessionStore(requesterSessionKey) >= 1
+    getSubagentDepthFromSessionStore(requesterSessionKey, {
+      cfg,
+      agentId: requesterAgentId,
+    }) >= 1
   ) {
     completeRequesterSettleWakeBatch({
       runIds: batchRunIds,
@@ -310,7 +323,10 @@ export async function maybeWakeRequesterAfterAllChildrenSettled(params: {
     return false;
   }
 
-  const { entry: requesterEntry } = loadRequesterSessionEntry(requesterSessionKey);
+  const { entry: requesterEntry } = loadRequesterSessionEntry(
+    requesterSessionKey,
+    requesterAgentId,
+  );
   if (!hasUsableSessionEntry(requesterEntry)) {
     completeRequesterSettleWakeBatch({
       runIds: batchRunIds,
@@ -324,6 +340,7 @@ export async function maybeWakeRequesterAfterAllChildrenSettled(params: {
     dedupeLatestChildCompletionRows(
       filterCurrentDirectChildCompletionRows(settledBatch, {
         requesterSessionKey,
+        requesterAgentId,
         getLatestSubagentRunByChildSessionKey:
           registryRuntime.getLatestSubagentRunByChildSessionKey,
       }),
@@ -336,7 +353,7 @@ export async function maybeWakeRequesterAfterAllChildrenSettled(params: {
   const requesterSessionOrigin = normalizeDeliveryContext(params.requesterOrigin);
   const directOrigin = resolveAnnounceOrigin(requesterEntry, requesterSessionOrigin);
   const wakeKeyBase = [
-    `requester-settle:${requesterSessionKey}:${batchRunIds.join(",")}`,
+    `requester-settle:${requesterAgentId ?? "unknown"}:${requesterSessionKey}:${batchRunIds.join(",")}`,
     selectedState.rearmGeneration === undefined
       ? undefined
       : `yield-${selectedState.rearmGeneration}`,
@@ -402,6 +419,7 @@ export async function maybeWakeRequesterAfterAllChildrenSettled(params: {
     try {
       delivery = await deliverSubagentAnnouncement({
         requesterSessionKey,
+        requesterAgentId,
         triggerMessage: wakeMessage,
         steerMessage: wakeMessage,
         summaryLine: "all spawned subagents settled",

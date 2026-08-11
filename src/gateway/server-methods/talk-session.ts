@@ -15,6 +15,7 @@ import {
   validateTalkSessionSubmitToolResultParams,
   validateTalkSessionTurnParams,
 } from "../../../packages/gateway-protocol/src/index.js";
+import { AgentSelectionRequiredError } from "../../agents/agent-scope.js";
 import { buildAgentMainSessionKey, parseAgentSessionKey } from "../../routing/session-key.js";
 import { REALTIME_VOICE_AGENT_CONSULT_TOOL } from "../../talk/agent-consult-tool.js";
 import { REALTIME_VOICE_AGENT_CONTROL_TOOL } from "../../talk/agent-run-control-shared.js";
@@ -117,6 +118,10 @@ function respondInvalidRequest(respond: RespondFn, message: string) {
 
 function respondUnavailable(respond: RespondFn, err: unknown) {
   const message = formatForLog(err);
+  if (err instanceof AgentSelectionRequiredError) {
+    respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, message));
+    return;
+  }
   respond(
     false,
     undefined,

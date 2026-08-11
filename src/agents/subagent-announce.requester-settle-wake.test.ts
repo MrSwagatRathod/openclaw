@@ -70,6 +70,8 @@ import {
 } from "./subagent-announce.requester-settle-wake.js";
 
 const REQUESTER = "agent:main:main";
+const requesterSettleKey = (suffix: string) =>
+  `announce:requester-settle:main:${REQUESTER}:${suffix}`;
 
 type SettledChildOverrides = Omit<Partial<SubagentRunRecord>, "execution"> & {
   startedAt?: number;
@@ -189,7 +191,7 @@ describe("maybeWakeRequesterAfterAllChildrenSettled", () => {
     expect(call.expectsCompletionMessage).toBe(false);
     expect(call.requireDirectDelivery).toBe(true);
     expect(call.requireVisibleReply).toBeUndefined();
-    expect(call.directIdempotencyKey).toBe(`announce:requester-settle:${REQUESTER}:run-a,run-b`);
+    expect(call.directIdempotencyKey).toBe(requesterSettleKey("run-a,run-b"));
     const message = String(call.triggerMessage);
     expect(message).toContain("settled");
     expect(message).toContain("social findings");
@@ -198,6 +200,7 @@ describe("maybeWakeRequesterAfterAllChildrenSettled", () => {
     expect(registryRuntimeMock.hasDescendantRunAwaitingSettle).toHaveBeenCalledWith(
       REQUESTER,
       "run-b",
+      "main",
     );
   });
 
@@ -225,9 +228,7 @@ describe("maybeWakeRequesterAfterAllChildrenSettled", () => {
       expect.arrayContaining([true, false]),
     );
 
-    expect(deliveredCallArg().directIdempotencyKey).toBe(
-      `announce:requester-settle:${REQUESTER}:run-a,run-b`,
-    );
+    expect(deliveredCallArg().directIdempotencyKey).toBe(requesterSettleKey("run-a,run-b"));
     deliverSpy.mockReset().mockResolvedValue({ delivered: true, path: "direct" });
   });
 
@@ -285,9 +286,7 @@ describe("maybeWakeRequesterAfterAllChildrenSettled", () => {
 
     expect(woke).toBe(true);
     const call = deliveredCallArg();
-    expect(call.directIdempotencyKey).toBe(
-      `announce:requester-settle:${REQUESTER}:run-a,run-b,run-c`,
-    );
+    expect(call.directIdempotencyKey).toBe(requesterSettleKey("run-a,run-b,run-c"));
     const message = String(call.triggerMessage);
     expect(message).toContain("alpha findings");
     expect(message).toContain("bravo findings");
@@ -313,7 +312,7 @@ describe("maybeWakeRequesterAfterAllChildrenSettled", () => {
       await maybeWakeRequesterAfterAllChildrenSettled(wakeParams({ settledEntry: queued })),
     ).toBe(true);
     expect(deliveredCallArg().directIdempotencyKey).toBe(
-      `announce:requester-settle:${REQUESTER}:run-first,run-queued`,
+      requesterSettleKey("run-first,run-queued"),
     );
   });
 
@@ -431,9 +430,7 @@ describe("maybeWakeRequesterAfterAllChildrenSettled", () => {
     const message = String(deliveredCallArg().triggerMessage);
     expect(message).not.toContain("NO_REPLY");
     expect(message).toContain("original user request still requires your visible final answer");
-    expect(deliveredCallArg().directIdempotencyKey).toBe(
-      `announce:requester-settle:${REQUESTER}:run-b:yield-1`,
-    );
+    expect(deliveredCallArg().directIdempotencyKey).toBe(requesterSettleKey("run-b:yield-1"));
     expect(completeBatchSpy).toHaveBeenCalledWith(["run-b"], 1);
   });
 
@@ -462,9 +459,7 @@ describe("maybeWakeRequesterAfterAllChildrenSettled", () => {
     const message = String(deliveredCallArg().triggerMessage);
     expect(message).not.toContain("NO_REPLY");
     expect(message).toContain("original user request still requires your visible final answer");
-    expect(deliveredCallArg().directIdempotencyKey).toBe(
-      `announce:requester-settle:${REQUESTER}:run-b:yield-1`,
-    );
+    expect(deliveredCallArg().directIdempotencyKey).toBe(requesterSettleKey("run-b:yield-1"));
     expect(completeBatchSpy).toHaveBeenCalledWith(["run-b"], 1);
   });
 
@@ -546,8 +541,8 @@ describe("maybeWakeRequesterAfterAllChildrenSettled", () => {
       expect(woke).toBe(true);
       expect(deliverSpy).toHaveBeenCalledTimes(2);
       const keys = deliverSpy.mock.calls.map(([arg]) => arg.directIdempotencyKey);
-      expect(keys[0]).toBe(`announce:requester-settle:${REQUESTER}:run-a,run-b`);
-      expect(keys[1]).toBe(`announce:requester-settle:${REQUESTER}:run-a,run-b:retry-1`);
+      expect(keys[0]).toBe(requesterSettleKey("run-a,run-b"));
+      expect(keys[1]).toBe(requesterSettleKey("run-a,run-b:retry-1"));
     } finally {
       vi.useRealTimers();
     }
@@ -593,8 +588,8 @@ describe("maybeWakeRequesterAfterAllChildrenSettled", () => {
         maybeWakeRequesterAfterAllChildrenSettled(wakeParams({ settledEntry: child })),
       ).resolves.toBe(true);
       expect(deliverSpy.mock.calls.map(([arg]) => arg.directIdempotencyKey)).toEqual([
-        `announce:requester-settle:${REQUESTER}:run-b:yield-1`,
-        `announce:requester-settle:${REQUESTER}:run-b:yield-1:retry-1`,
+        requesterSettleKey("run-b:yield-1"),
+        requesterSettleKey("run-b:yield-1:retry-1"),
       ]);
       expect(completeBatchSpy).toHaveBeenCalledWith(["run-b"], 1);
     } finally {
@@ -629,8 +624,8 @@ describe("maybeWakeRequesterAfterAllChildrenSettled", () => {
       ).toBe(true);
       expect(deliverSpy).toHaveBeenCalledTimes(2);
       expect(deliverSpy.mock.calls.map(([arg]) => arg.directIdempotencyKey)).toEqual([
-        `announce:requester-settle:${REQUESTER}:run-a,run-b`,
-        `announce:requester-settle:${REQUESTER}:run-a,run-b`,
+        requesterSettleKey("run-a,run-b"),
+        requesterSettleKey("run-a,run-b"),
       ]);
     } finally {
       vi.useRealTimers();
@@ -791,9 +786,7 @@ describe("maybeWakeRequesterAfterAllChildrenSettled", () => {
       ).toBe(true);
 
       expect(transitionBatchSpy).not.toHaveBeenCalled();
-      expect(deliveredCallArg().directIdempotencyKey).toBe(
-        `announce:requester-settle:${REQUESTER}:run-a,run-b`,
-      );
+      expect(deliveredCallArg().directIdempotencyKey).toBe(requesterSettleKey("run-a,run-b"));
     });
 
     it("defers a frozen batch replay until a newer descendant settles", async () => {
@@ -910,7 +903,7 @@ describe("maybeWakeRequesterAfterAllChildrenSettled", () => {
           ),
         ).toBe(true);
         expect(deliveredCallArg().directIdempotencyKey).toBe(
-          `announce:requester-settle:${REQUESTER}:run-a,run-b:retry-1`,
+          requesterSettleKey("run-a,run-b:retry-1"),
         );
       } finally {
         vi.useRealTimers();

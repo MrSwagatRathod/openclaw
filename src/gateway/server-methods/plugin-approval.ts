@@ -14,6 +14,8 @@ import type {
 } from "../../infra/plugin-approvals.js";
 import { resolvePluginApprovalTimeoutMs } from "../../infra/plugin-approvals.js";
 import type { ExecApprovalManager } from "../exec-approval-manager.js";
+import { resolveRequestedSessionAgentId } from "../session-request-agent.js";
+import { resolveStoredSessionKeyForAgentStore } from "../session-store-key.js";
 import { runApprovalRequestDeliveries } from "./approval-request-delivery.js";
 import {
   bindApprovalRequesterMetadata,
@@ -85,6 +87,27 @@ export function createPluginApprovalHandlers(
       const normalizeTrimmedString = (value?: string | null): string | null =>
         normalizeOptionalString(value) || null;
 
+      const rawSessionKey = normalizeOptionalString(p.sessionKey);
+      const sessionOwner = rawSessionKey
+        ? resolveRequestedSessionAgentId(
+            context.getRuntimeConfig(),
+            rawSessionKey,
+            normalizeOptionalString(p.agentId),
+          )
+        : undefined;
+      if (sessionOwner && !sessionOwner.ok) {
+        respond(false, undefined, sessionOwner.error);
+        return;
+      }
+      const sessionKey =
+        rawSessionKey && sessionOwner?.ok
+          ? resolveStoredSessionKeyForAgentStore({
+              cfg: context.getRuntimeConfig(),
+              agentId: sessionOwner.agentId,
+              sessionKey: rawSessionKey,
+            })
+          : null;
+
       const request: PluginApprovalRequestPayload = {
         pluginId: p.pluginId ?? null,
         title: p.title,
@@ -100,8 +123,8 @@ export function createPluginApprovalHandlers(
               }),
             }
           : {}),
-        agentId: p.agentId ?? null,
-        sessionKey: p.sessionKey ?? null,
+        agentId: sessionOwner?.ok ? sessionOwner.agentId : (p.agentId ?? null),
+        sessionKey,
         turnSourceChannel: normalizeTrimmedString(p.turnSourceChannel),
         turnSourceTo: normalizeTrimmedString(p.turnSourceTo),
         turnSourceAccountId: normalizeTrimmedString(p.turnSourceAccountId),

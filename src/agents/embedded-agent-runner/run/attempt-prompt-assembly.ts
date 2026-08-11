@@ -186,6 +186,7 @@ export async function prepareEmbeddedAttemptPromptAssembly(input: {
     ? undefined
     : resolveAttemptMediaTaskSystemPromptAddition({
         sessionKey: attempt.sessionKey,
+        agentId: input.sessionAgentId,
         trigger: attempt.trigger,
       });
   if (mediaTaskSystemPromptAddition) {

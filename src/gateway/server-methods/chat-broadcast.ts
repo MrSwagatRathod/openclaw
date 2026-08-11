@@ -1,10 +1,8 @@
-import { resolveDefaultAgentId } from "../../agents/agent-scope.js";
 import { getReplyPayloadMetadata, type ReplyPayload } from "../../auto-reply/reply-payload.js";
-import { tryResolveLegacyCompatibilityAgentId } from "../../config/legacy.default-agent-owner.js";
-import { resolvePersistedSessionStoreOwnerForKey } from "../../config/sessions/session-store-owner.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
-import { normalizeAgentId } from "../../routing/session-key.js";
+import { normalizeAgentId, parseAgentSessionKey } from "../../routing/session-key.js";
 import { projectChatDisplayMessage } from "../chat-display-projection.js";
+import { tryResolveSessionCompatibilityOwnerAgentId } from "../session-request-agent.js";
 import type { GatewayRequestContext } from "./types.js";
 
 type ChatBroadcastContext = Pick<
@@ -30,27 +28,29 @@ function nextChatSeq(context: { agentRunSeq: Map<string, number> }, runId: strin
   return next;
 }
 
-function resolveGlobalAwareNodeChatDeliveryKeys(params: {
+export function resolveGlobalAwareNodeChatDeliveryKeys(params: {
   cfg: OpenClawConfig;
   sessionKey: string;
   agentId?: string;
 }): string[] {
-  if (params.sessionKey !== "global") {
+  if (parseAgentSessionKey(params.sessionKey)) {
     return [params.sessionKey];
   }
-  const compatibilityAgentId = tryResolveLegacyCompatibilityAgentId(params.cfg);
-  const persistedOwner = resolvePersistedSessionStoreOwnerForKey(params.cfg, params.sessionKey);
-  const unscopedOwnerAgentId =
-    persistedOwner.kind === "configured" ? persistedOwner.agentId : compatibilityAgentId;
-  const scopedAgentId = normalizeAgentId(
-    params.agentId ?? unscopedOwnerAgentId ?? resolveDefaultAgentId(params.cfg),
+  const unscopedOwnerAgentId = tryResolveSessionCompatibilityOwnerAgentId(
+    params.cfg,
+    params.sessionKey,
   );
-  const keys = [`agent:${scopedAgentId}:global`];
+  const selectedAgentId = params.agentId ?? unscopedOwnerAgentId;
+  if (!selectedAgentId) {
+    return [params.sessionKey];
+  }
+  const scopedAgentId = normalizeAgentId(selectedAgentId);
+  const keys = [`agent:${scopedAgentId}:${params.sessionKey}`];
   if (
     unscopedOwnerAgentId &&
     normalizeAgentId(unscopedOwnerAgentId) === normalizeAgentId(scopedAgentId)
   ) {
-    keys.push("global");
+    keys.push(params.sessionKey);
   }
   return keys;
 }
@@ -81,7 +81,7 @@ export function broadcastChatFinal(params: {
   message?: Record<string, unknown>;
 }): void {
   const seq = nextChatSeq(params.context, params.runId);
-  const payloadAgentId = params.sessionKey === "global" ? params.agentId : undefined;
+  const payloadAgentId = parseAgentSessionKey(params.sessionKey) ? undefined : params.agentId;
   const payload = {
     runId: params.runId,
     sessionKey: params.sessionKey,
@@ -124,8 +124,9 @@ export function broadcastSideResult(params: {
   payload: SideResultPayload;
 }): void {
   const seq = nextChatSeq(params.context, params.payload.runId);
-  const payloadAgentId =
-    params.payload.sessionKey === "global" ? params.payload.agentId : undefined;
+  const payloadAgentId = parseAgentSessionKey(params.payload.sessionKey)
+    ? undefined
+    : params.payload.agentId;
   const payload = {
     ...params.payload,
     ...(payloadAgentId ? { agentId: payloadAgentId } : {}),
@@ -155,7 +156,7 @@ export function broadcastChatError(params: {
   errorMessage?: string;
 }): void {
   const seq = nextChatSeq(params.context, params.runId);
-  const payloadAgentId = params.sessionKey === "global" ? params.agentId : undefined;
+  const payloadAgentId = parseAgentSessionKey(params.sessionKey) ? undefined : params.agentId;
   const payload = {
     runId: params.runId,
     sessionKey: params.sessionKey,

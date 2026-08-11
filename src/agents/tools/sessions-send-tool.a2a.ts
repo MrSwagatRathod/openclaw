@@ -7,7 +7,7 @@ import crypto from "node:crypto";
 import type { CallGatewayOptions } from "../../gateway/call.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
-import { normalizeAgentId } from "../../routing/session-key.js";
+import { normalizeAgentId, parseAgentSessionKey } from "../../routing/session-key.js";
 import { resolveNestedAgentLaneForSession } from "../lanes.js";
 import {
   type AgentWaitResult,
@@ -39,10 +39,11 @@ function sameOwnedSession(params: {
   if (!params.leftKey || params.leftKey !== params.rightKey) {
     return false;
   }
-  if (!params.leftAgentId || !params.rightAgentId) {
-    return true;
-  }
-  return normalizeAgentId(params.leftAgentId) === normalizeAgentId(params.rightAgentId);
+  const leftAgentId = params.leftAgentId ?? parseAgentSessionKey(params.leftKey)?.agentId;
+  const rightAgentId = params.rightAgentId ?? parseAgentSessionKey(params.rightKey)?.agentId;
+  return Boolean(
+    leftAgentId && rightAgentId && normalizeAgentId(leftAgentId) === normalizeAgentId(rightAgentId),
+  );
 }
 
 type GatewayCaller = <T = unknown>(opts: CallGatewayOptions) => Promise<T>;
@@ -125,6 +126,7 @@ export async function runSessionsSendA2AFlow(params: {
       if (wait.status === "ok") {
         const latestSnapshot = await readLatestAssistantReplySnapshot({
           sessionKey: params.targetSessionKey,
+          agentId: params.targetAgentId,
           stopAtTranscriptArtifact: true,
           callGateway: sessionsSendA2ADeps.callGateway,
         });
@@ -167,6 +169,7 @@ export async function runSessionsSendA2AFlow(params: {
     const announceTarget = await resolveAnnounceTarget({
       sessionKey: params.targetSessionKey,
       displayKey: params.displayKey,
+      agentId: params.targetAgentId,
     });
     const targetChannel = announceTarget?.channel ?? "unknown";
 

@@ -595,6 +595,7 @@ export function createSessionsSendTool(opts?: {
       }
       const resolvedSession = await resolveSessionReference({
         sessionKey,
+        keyAgentId: requesterAgentId,
         alias,
         mainKey,
         requesterInternalKey: effectiveRequesterKey,
@@ -611,6 +612,7 @@ export function createSessionsSendTool(opts?: {
         action: "send",
         resolvedSession,
         requesterSessionKey: effectiveRequesterKey,
+        requesterAgentId,
         restrictToSpawned,
         visibilitySessionKey: sessionKey,
       });
@@ -792,7 +794,11 @@ export function createSessionsSendTool(opts?: {
       let runId: string = idempotencyKey;
       // Fire-and-forget self-send remains a channel-delivery path. A synchronous
       // self-send would wait behind its own active session lane until timeout.
-      if (timeoutSeconds !== 0 && requesterSessionKey === resolvedKey) {
+      if (
+        timeoutSeconds !== 0 &&
+        requesterSessionKey === resolvedKey &&
+        targetAgentId === requesterAgentId
+      ) {
         return jsonResult({
           runId,
           status: "error",
@@ -856,7 +862,8 @@ export function createSessionsSendTool(opts?: {
           }
 
           const requesterChannel = opts?.agentChannel;
-          const sameSessionA2A = requesterSessionKey === resolvedKey;
+          const sameSessionA2A =
+            requesterSessionKey === resolvedKey && targetAgentId === requesterAgentId;
           const isIsolatedCronRequester = isCronRunSessionKey(requesterSessionKey);
           // Watch registration follows successful dispatch: a failed send must not leave
           // a hidden watch, and cron run-scoped sends can fall back to the durable parent
@@ -871,6 +878,7 @@ export function createSessionsSendTool(opts?: {
                 ? registerSessionStateWatch({
                     watcherSessionKey: replyRequesterSessionKey,
                     targetSessionKey,
+                    targetAgentId,
                   })
                 : false;
             return watchRequested ? { watched } : {};

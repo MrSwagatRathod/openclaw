@@ -385,12 +385,17 @@ function resolveActiveStatusModelIdentity(params: {
   liveSessionKeys: Iterable<string | undefined>;
   modelRaw?: string;
   resolvedKey: string;
+  resolvedAgentId: string;
+  requesterAgentId: string;
 }): ActiveStatusModelIdentity | undefined {
   const activeModelId = params.activeModelId?.trim();
   if (!activeModelId || params.modelRaw !== undefined) {
     return undefined;
   }
   if (!params.isSemanticCurrentRequest && !params.isImplicitCurrentRequest) {
+    return undefined;
+  }
+  if (params.resolvedAgentId !== params.requesterAgentId) {
     return undefined;
   }
   const resolvedKey = params.resolvedKey.trim();
@@ -427,10 +432,14 @@ function withActiveStatusModelIdentity(
 function formatSessionTaskLine(params: {
   relatedSessionKey: string;
   callerOwnerKey: string;
+  callerAgentId: string;
+  config: OpenClawConfig;
 }): string | undefined {
   const snapshot = buildTaskStatusSnapshotForRelatedSessionKeyForOwner({
     relatedSessionKey: params.relatedSessionKey,
     callerOwnerKey: params.callerOwnerKey,
+    callerAgentId: params.callerAgentId,
+    config: params.config,
   });
   const task = snapshot.focus;
   if (!task) {
@@ -731,15 +740,17 @@ export function createSessionStatusTool(opts?: {
       });
 
       // Resolve against the requester-scoped store first to avoid leaking default agent data.
-      let resolved = resolveSessionStatusEntry({
-        cfg,
-        agentId,
-        keyRaw: requestedKeyRaw,
-        alias,
-        mainKey,
-        requesterInternalKey: storeScopedRequesterKey,
-        includeAliasFallback: requestedKeyInput !== "current",
-      });
+      let resolved = deferTargetOwnerResolution
+        ? undefined
+        : resolveSessionStatusEntry({
+            cfg,
+            agentId,
+            keyRaw: requestedKeyRaw,
+            alias,
+            mainKey,
+            requesterInternalKey: storeScopedRequesterKey,
+            includeAliasFallback: requestedKeyInput !== "current",
+          });
 
       if (
         !resolved &&
@@ -748,16 +759,18 @@ export function createSessionStatusTool(opts?: {
         const resolvedSession = await resolveSessionReference({
           sessionKey: requestedKeyInput,
           ...(requestedKeyInput === "current" ? { agentId: requesterAgentId } : {}),
+          keyAgentId: requesterAgentId,
           alias,
           mainKey,
           requesterInternalKey: effectiveRequesterKey,
           restrictToSpawned: opts?.sandboxed === true,
         });
-        if (resolvedSession.ok && resolvedSession.resolvedViaSessionId) {
+        if (resolvedSession.ok) {
           const visibleSession = await resolveVisibleSessionReference({
             action: "status",
             resolvedSession,
             requesterSessionKey: effectiveRequesterKey,
+            requesterAgentId,
             restrictToSpawned: opts?.sandboxed === true,
             visibilitySessionKey: requestedKeyInput,
           });
@@ -774,7 +787,7 @@ export function createSessionStatusTool(opts?: {
             requesterAgentId,
           });
           ensureAgentAccess(visibleAgentId);
-          resolvedViaSessionId = true;
+          resolvedViaSessionId = resolvedSession.resolvedViaSessionId;
           requestedKeyRaw = visibleSession.key;
           requestedKeyInput = requestedKeyRaw.trim();
           agentId = visibleAgentId;
@@ -871,7 +884,8 @@ export function createSessionStatusTool(opts?: {
         isSemanticCurrentRequest ||
         resolvedViaImplicitCurrentFallback ||
         (!resolvedViaSessionId &&
-          (requestedKeyInput === "current" || resolved.key === requestedKeyInput));
+          (requestedKeyInput === "current" ||
+            (resolved.key === requestedKeyInput && agentId === requesterAgentId)));
       const visibilityTargetKey = shouldTreatVisibilityTargetAsSelf
         ? visibilityRequesterKey
         : normalizeVisibilityTargetSessionKey(resolved.key, agentId);
@@ -1000,6 +1014,8 @@ export function createSessionStatusTool(opts?: {
             liveSessionKeys,
             modelRaw,
             resolvedKey: scopedResolved.key,
+            resolvedAgentId: agentId,
+            requesterAgentId,
           });
           const runtimeModelIdentity = activeModelIdentity
             ? activeModelIdentity
@@ -1041,6 +1057,8 @@ export function createSessionStatusTool(opts?: {
           const taskLine = formatSessionTaskLine({
             relatedSessionKey: scopedResolved.key,
             callerOwnerKey: visibilityRequesterKey,
+            callerAgentId: requesterAgentId,
+            config: cfg,
           });
           // Tool status may read persisted/configured facts, but must not start provider discovery.
           const thinkingCatalog = await loadPreparedModelCatalog({
@@ -1102,8 +1120,8 @@ export function createSessionStatusTool(opts?: {
           );
           const activeRouteRunSessionKey = opts?.runSessionKey?.trim();
           const isLiveRouteSession = activeRouteRunSessionKey
-            ? scopedResolved.key.trim() === activeRouteRunSessionKey
-            : liveSessionKeySet.has(scopedResolved.key.trim());
+            ? agentId === requesterAgentId && scopedResolved.key.trim() === activeRouteRunSessionKey
+            : agentId === requesterAgentId && liveSessionKeySet.has(scopedResolved.key.trim());
           const routeDetails = buildSessionStatusRouteDetails({
             entry: statusSessionEntry,
             sessionKey: scopedResolved.key,

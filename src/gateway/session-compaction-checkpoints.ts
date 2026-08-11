@@ -87,6 +87,7 @@ type RestoreCheckpointSessionParams = {
 
 type PersistSessionCompactionCheckpointParams = {
   cfg: OpenClawConfig;
+  agentId?: string;
   sessionKey: string;
   sessionId: string;
   reason: SessionCompactionCheckpointReason;
@@ -715,6 +716,7 @@ async function persistSessionCompactionCheckpoint(
   const target = resolveGatewaySessionStoreTarget({
     cfg: params.cfg,
     key: params.sessionKey,
+    ...(params.agentId ? { agentId: params.agentId } : {}),
   });
   const createdAt = params.createdAt ?? Date.now();
   const checkpoint: SessionCompactionCheckpoint = {

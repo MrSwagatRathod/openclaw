@@ -19,6 +19,7 @@ function quotePromptData(value: string): string {
 export function buildActiveSubagentSystemPromptAddition(params: {
   cfg: OpenClawConfig;
   controllerSessionKey?: string;
+  controllerAgentId?: string;
   hasSessionsYield?: boolean;
   recentMinutes?: number;
 }): string | undefined {
@@ -32,7 +33,11 @@ export function buildActiveSubagentSystemPromptAddition(params: {
     alias,
     mainKey,
   });
-  const runs = listControlledSubagentRuns(controllerSessionKey);
+  const runs = listControlledSubagentRuns(
+    controllerSessionKey,
+    params.controllerAgentId,
+    params.cfg,
+  );
   if (runs.length === 0) {
     return undefined;
   }
