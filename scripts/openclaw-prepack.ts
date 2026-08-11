@@ -25,7 +25,7 @@ const ALLOW_UNRELEASED_CHANGELOG_ENV = "OPENCLAW_PREPACK_ALLOW_UNRELEASED_CHANGE
 const PREPARED_RELEASE_ENV = "OPENCLAW_PREPACK_PREPARED";
 const OCM_INTERNAL_NPM_BIN_ENV = "OCM_INTERNAL_NPM_BIN";
 const OCM_WORKSPACE_DIRS_ENV = "OPENCLAW_OCM_WORKSPACE_DEPENDENCY_DIRS";
-const OCM_ADAPTER_BASENAME = "ocm-npm-workspace-deps.mts";
+const OCM_ADAPTER_BASENAME = "ocm-npm-workspace-deps.mjs";
 const NPM_COMMAND_ENV = "npm_command";
 const SELF_CONTAINED_SOURCE_PACK_COMMAND =
   "node scripts/package-openclaw-for-docker.mjs --allow-unreleased-changelog";

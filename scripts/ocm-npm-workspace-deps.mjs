@@ -1,6 +1,6 @@
-#!/usr/bin/env -S node --import tsx
+#!/usr/bin/env node
 
-import { spawnSync, type SpawnSyncOptions } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join, resolve } from "node:path";
@@ -14,11 +14,9 @@ const RUNTIME_BUILD_PROFILE_ENV = "OPENCLAW_OCM_RUNTIME_BUILD_PROFILE";
 const supportedRuntimeBuildProfiles = new Set(["sourcePerformance"]);
 const fullGitCommitPattern = /^[0-9a-f]{40}$/iu;
 
-type WorkspacePackage = { name: string; version: string; tarball: string };
-
 export function parseWorkspaceDependencyDirs(
-  raw: string | undefined = process.env[WORKSPACE_DIRS_ENV],
-  cwd: string = process.cwd(),
+  raw = process.env[WORKSPACE_DIRS_ENV],
+  cwd = process.cwd(),
 ) {
   return (raw ?? "")
     .split(delimiter)
@@ -27,16 +25,12 @@ export function parseWorkspaceDependencyDirs(
     .map((entry) => resolve(cwd, entry));
 }
 
-function optionValue(args: string[], name: string): string | undefined {
+function optionValue(args, name) {
   const index = args.indexOf(name);
   return index >= 0 ? args[index + 1] : undefined;
 }
 
-export function resolveWorkspaceInstallPlan(
-  args: string[],
-  workspaceDirs: string[],
-  cwd: string = process.cwd(),
-) {
+export function resolveWorkspaceInstallPlan(args, workspaceDirs, cwd = process.cwd()) {
   if (args[0] !== "install" || workspaceDirs.length === 0) {
     return null;
   }
@@ -52,10 +46,7 @@ export function resolveWorkspaceInstallPlan(
   };
 }
 
-export function buildInstallManifest(
-  rootArchive: string,
-  workspacePackages: Pick<WorkspacePackage, "name" | "tarball">[],
-) {
+export function buildInstallManifest(rootArchive, workspacePackages) {
   return {
     private: true,
     dependencies: {
@@ -67,7 +58,7 @@ export function buildInstallManifest(
   };
 }
 
-function runNpm(npm: string, args: string[], options: SpawnSyncOptions = {}) {
+function runNpm(npm, args, options = {}) {
   const result = spawnSync(npm, args, {
     env: process.env,
     ...options,
@@ -78,7 +69,7 @@ function runNpm(npm: string, args: string[], options: SpawnSyncOptions = {}) {
   return result;
 }
 
-export function resolveNpmEnvironment(args: string[], env: NodeJS.ProcessEnv = process.env) {
+export function resolveNpmEnvironment(args, env = process.env) {
   if (args[0] !== "pack") {
     return env;
   }
@@ -89,7 +80,7 @@ export function resolveNpmEnvironment(args: string[], env: NodeJS.ProcessEnv = p
   };
 }
 
-export function resolveRuntimePackPlan(args: string[], env: NodeJS.ProcessEnv = process.env) {
+export function resolveRuntimePackPlan(args, env = process.env) {
   if (args[0] !== "pack") {
     return null;
   }
@@ -107,9 +98,9 @@ export function resolveRuntimePackPlan(args: string[], env: NodeJS.ProcessEnv = 
 }
 
 export function resolveRuntimePackEnvironment(
-  env: NodeJS.ProcessEnv = process.env,
-  now: () => Date = () => new Date(),
-  readGitCommit: () => string | null = () => {
+  env = process.env,
+  now = () => new Date(),
+  readGitCommit = () => {
     const result = spawnSync("git", ["rev-parse", "HEAD"], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
@@ -131,7 +122,7 @@ export function resolveRuntimePackEnvironment(
   };
 }
 
-function runTar(args: string[]) {
+function runTar(args) {
   const result = spawnSync("tar", args, {
     env: process.env,
     stdio: "inherit",
@@ -144,14 +135,14 @@ function runTar(args: string[]) {
   }
 }
 
-function runChecked(command: string, args: string[], options: SpawnSyncOptions = {}) {
+function runChecked(command, args, options = {}) {
   const result = runNpm(command, args, options);
   if (result.status !== 0) {
     throw new Error(`${command} failed with status ${result.status ?? 1}`);
   }
 }
 
-function supportsPreparedRuntimePack(env: NodeJS.ProcessEnv) {
+function supportsPreparedRuntimePack(env) {
   const script = `
     const mod = await import("./scripts/openclaw-prepack.ts");
     process.exit(typeof mod.preparePrepackArtifacts === "function" ? 0 : 1);
@@ -167,7 +158,7 @@ function supportsPreparedRuntimePack(env: NodeJS.ProcessEnv) {
   return result.status === 0;
 }
 
-function prepareRuntimePack(profile: string, env: NodeJS.ProcessEnv) {
+function prepareRuntimePack(profile, env) {
   runChecked(process.execPath, ["--import", "tsx", "scripts/build-all.mts", profile], {
     env,
     stdio: "inherit",
@@ -186,7 +177,7 @@ function prepareRuntimePack(profile: string, env: NodeJS.ProcessEnv) {
   });
 }
 
-export function restoreRuntimePack(env: NodeJS.ProcessEnv, cwd: string = process.cwd()) {
+export function restoreRuntimePack(env, cwd = process.cwd()) {
   const script = `
     const { existsSync } = await import("node:fs");
     if (existsSync("./scripts/openclaw-postpack.mjs")) {
@@ -205,11 +196,7 @@ export function restoreRuntimePack(env: NodeJS.ProcessEnv, cwd: string = process
   });
 }
 
-export function runPreparedRuntimePack<T>(
-  prepare: () => void,
-  pack: () => T,
-  restore: () => void,
-): T {
+export function runPreparedRuntimePack(prepare, pack, restore) {
   prepare();
   try {
     return pack();
@@ -218,11 +205,7 @@ export function runPreparedRuntimePack<T>(
   }
 }
 
-function packWorkspaceDependencies(
-  npm: string,
-  workspaceDirs: string[],
-  outputDir: string,
-): WorkspacePackage[] {
+function packWorkspaceDependencies(npm, workspaceDirs, outputDir) {
   return workspaceDirs.map((packageDir) => {
     const packageJson = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8"));
     if (typeof packageJson.name !== "string" || packageJson.name.trim() === "") {
@@ -250,15 +233,12 @@ function packWorkspaceDependencies(
     return {
       name: packageJson.name,
       version: packageJson.version,
-      tarball: join(outputDir, tarballs[0]!),
+      tarball: join(outputDir, tarballs[0]),
     };
   });
 }
 
-export function rewriteWorkspaceDependencyVersions(
-  packageJson: Record<string, unknown>,
-  workspacePackages: WorkspacePackage[],
-) {
+export function rewriteWorkspaceDependencyVersions(packageJson, workspacePackages) {
   const workspaceVersions = new Map(workspacePackages.map(({ name, version }) => [name, version]));
   let rewritten = 0;
   for (const section of [
@@ -286,11 +266,7 @@ export function rewriteWorkspaceDependencyVersions(
   return rewritten;
 }
 
-function patchRootArchiveWorkspaceDependencies(
-  rootArchive: string,
-  workspacePackages: WorkspacePackage[],
-  outputDir: string,
-): string {
+function patchRootArchiveWorkspaceDependencies(rootArchive, workspacePackages, outputDir) {
   const unpackDir = join(outputDir, "root-archive");
   mkdirSync(unpackDir);
   runTar(["-xzf", rootArchive, "-C", unpackDir]);
@@ -308,7 +284,7 @@ function patchRootArchiveWorkspaceDependencies(
   return patchedArchive;
 }
 
-function main(): number {
+function main() {
   const args = process.argv.slice(2);
   const npm = process.env[REAL_NPM_ENV]?.trim() || "npm";
   const workspaceDirs = parseWorkspaceDependencyDirs();

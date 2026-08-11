@@ -14,13 +14,13 @@ import {
   restoreRuntimePack,
   rewriteWorkspaceDependencyVersions,
   runPreparedRuntimePack,
-} from "../../scripts/ocm-npm-workspace-deps.mts";
+} from "../../scripts/ocm-npm-workspace-deps.mjs";
 import { restorePrepackArtifacts } from "../../scripts/openclaw-postpack.mjs";
 import { preparePackageChangelog } from "../../scripts/package-changelog.mjs";
 import { preparePackageDocsMap } from "../../scripts/package-docs-map.mjs";
 
 const adapterPath = fileURLToPath(
-  new URL("../../scripts/ocm-npm-workspace-deps.mts", import.meta.url),
+  new URL("../../scripts/ocm-npm-workspace-deps.mjs", import.meta.url),
 );
 const packageDocsMapPath = fileURLToPath(
   new URL("../../scripts/package-docs-map.mjs", import.meta.url),
@@ -299,30 +299,28 @@ describe("OCM npm workspace dependency adapter", () => {
       writeFileSync(join(workspaceDir, "index.js"), "export const ready = true;\n");
       execFileSync("tar", ["-czf", rootArchive, "-C", archiveRoot, "package"]);
 
-      execFileSync(
-        process.execPath,
-        [
-          adapterPath,
-          "install",
-          "--prefix",
-          installDir,
-          "--omit=dev",
-          "--no-save",
-          "--package-lock=false",
-          rootArchive,
-        ],
-        {
-          env: {
-            ...process.env,
-            OPENCLAW_OCM_REAL_NPM_BIN: process.platform === "win32" ? "npm.cmd" : "npm",
-            OPENCLAW_OCM_WORKSPACE_DEPENDENCY_DIRS: workspaceDir,
-            npm_config_audit: "false",
-            npm_config_cache: join(root, "npm-cache"),
-            npm_config_fund: "false",
-          },
-          stdio: "pipe",
+      const command = process.platform === "win32" ? process.execPath : adapterPath;
+      const args = [
+        ...(process.platform === "win32" ? [adapterPath] : []),
+        "install",
+        "--prefix",
+        installDir,
+        "--omit=dev",
+        "--no-save",
+        "--package-lock=false",
+        rootArchive,
+      ];
+      execFileSync(command, args, {
+        env: {
+          ...process.env,
+          OPENCLAW_OCM_REAL_NPM_BIN: process.platform === "win32" ? "npm.cmd" : "npm",
+          OPENCLAW_OCM_WORKSPACE_DEPENDENCY_DIRS: workspaceDir,
+          npm_config_audit: "false",
+          npm_config_cache: join(root, "npm-cache"),
+          npm_config_fund: "false",
         },
-      );
+        stdio: "pipe",
+      });
 
       expect(
         JSON.parse(readFileSync(join(installDir, "node_modules/openclaw/package.json"), "utf8"))

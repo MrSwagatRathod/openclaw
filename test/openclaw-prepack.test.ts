@@ -104,14 +104,14 @@ describe("collectSourcePackWorkspaceDependencyErrors", () => {
     expect(
       collectSourcePackWorkspaceDependencyErrors(rootPackageJson, {
         npm_command: "pack",
-        OCM_INTERNAL_NPM_BIN: path.join(rootDir, "scripts", "ocm-npm-workspace-deps.mts"),
+        OCM_INTERNAL_NPM_BIN: path.join(rootDir, "scripts", "ocm-npm-workspace-deps.mjs"),
         OPENCLAW_OCM_WORKSPACE_DEPENDENCY_DIRS: aiDir,
       }),
     ).toEqual([]);
     expect(
       collectSourcePackWorkspaceDependencyErrors(rootPackageJson, {
         npm_command: "pack",
-        OCM_INTERNAL_NPM_BIN: path.join(rootDir, "scripts", "ocm-npm-workspace-deps.mts"),
+        OCM_INTERNAL_NPM_BIN: path.join(rootDir, "scripts", "ocm-npm-workspace-deps.mjs"),
         OPENCLAW_OCM_WORKSPACE_DEPENDENCY_DIRS: rootDir,
       }),
     ).toHaveLength(2);
@@ -125,7 +125,7 @@ describe("collectSourcePackWorkspaceDependencyErrors", () => {
     expect(
       collectSourcePackWorkspaceDependencyErrors(rootPackageJson, {
         npm_command: "publish",
-        OCM_INTERNAL_NPM_BIN: path.join(rootDir, "scripts", "ocm-npm-workspace-deps.mts"),
+        OCM_INTERNAL_NPM_BIN: path.join(rootDir, "scripts", "ocm-npm-workspace-deps.mjs"),
         OPENCLAW_OCM_WORKSPACE_DEPENDENCY_DIRS: aiDir,
       }),
     ).toHaveLength(2);
