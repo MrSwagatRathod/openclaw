@@ -99,13 +99,6 @@
     ]
   },
   {
-    "name": "clearSecretsRuntimeSnapshot",
-    "files": [
-      "src/secrets/runtime-state.ts",
-      "src/secrets/runtime.ts"
-    ]
-  },
-  {
     "name": "containsConfigIncludeDirective",
     "files": [
       "src/config/io.read-helpers.ts",
