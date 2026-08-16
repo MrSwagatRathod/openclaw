@@ -2,6 +2,7 @@
 import fsSync from "node:fs";
 import { uniqueValues } from "@openclaw/normalization-core/string-normalization";
 import { isGatewayArgv, parseProcCmdline } from "./gateway-process-argv.js";
+import { probePortUsage } from "./ports-probe.js";
 import { findGatewayPidsOnPortSync as findUnixGatewayPidsOnPortSync } from "./restart-stale-pids.js";
 import { spawnPsSync } from "./spawn-ps.js";
 import {
@@ -71,4 +72,23 @@ export function findVerifiedGatewayListenerPidsOnPortSync(port: number): number[
 /** Format gateway PIDs for human-facing diagnostics. */
 export function formatGatewayPidList(pids: number[]): string {
   return pids.join(", ");
+}
+
+/**
+ * Fail when `port` still has an owner that PID discovery could not name.
+ *
+ * Finding no PID does not prove the gateway is down: `lsof` may be missing on
+ * minimal containers and the gateway lock may be absent or stale while the
+ * process keeps serving. Callers that would otherwise report "not running"
+ * use this to turn that ambiguity into an explicit error instead of a
+ * false success.
+ */
+export async function assertGatewayPortFreeWhenPidUnknown(port: number): Promise<void> {
+  const status = await probePortUsage(port).catch(() => "unknown" as const);
+  if (status === "free") {
+    return;
+  }
+  throw new Error(
+    `port ${port} is in use but the gateway process could not be identified (lsof unavailable or the gateway lock is missing/stale); run "openclaw gateway status --deep" to investigate`,
+  );
 }

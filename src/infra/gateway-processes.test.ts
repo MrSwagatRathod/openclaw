@@ -1,4 +1,5 @@
 // Covers gateway process discovery across platform process listings.
+import net from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mockProcessPlatform } from "../test-utils/vitest-spies.js";
 import { getWindowsPowerShellExePath, getWindowsSystem32ExePath } from "./windows-install-roots.js";
@@ -58,6 +59,7 @@ vi.mock("../channels/chat-meta.js", () => ({
 }));
 
 const {
+  assertGatewayPortFreeWhenPidUnknown,
   findVerifiedGatewayListenerPidsOnPortSync,
   formatGatewayPidList,
   signalVerifiedGatewayPidSync,
@@ -65,6 +67,19 @@ const {
 
 function setPlatform(platform: NodeJS.Platform): void {
   mockProcessPlatform(platform);
+}
+
+async function findFreePort(): Promise<number> {
+  const server = net.createServer();
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => resolve());
+  });
+  const port = (server.address() as net.AddressInfo).port;
+  await new Promise<void>((resolve) => {
+    server.close(() => resolve());
+  });
+  return port;
 }
 
 describe("gateway-processes", () => {
@@ -188,5 +203,30 @@ describe("gateway-processes", () => {
 
   it("formats pid lists as comma-separated output", () => {
     expect(formatGatewayPidList([1, 2, 3])).toBe("1, 2, 3");
+  });
+
+  it("accepts a port with no listener when the gateway pid is unknown", async () => {
+    const port = await findFreePort();
+
+    await expect(assertGatewayPortFreeWhenPidUnknown(port)).resolves.toBeUndefined();
+  });
+
+  it("rejects a port that still has a listener when the gateway pid is unknown", async () => {
+    const server = net.createServer();
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", () => resolve());
+    });
+    const port = (server.address() as net.AddressInfo).port;
+
+    try {
+      await expect(assertGatewayPortFreeWhenPidUnknown(port)).rejects.toThrow(
+        new RegExp(`port ${port} is in use but the gateway process could not be identified`),
+      );
+    } finally {
+      await new Promise<void>((resolve) => {
+        server.close(() => resolve());
+      });
+    }
   });
 });
