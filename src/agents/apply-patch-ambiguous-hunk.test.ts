@@ -88,6 +88,63 @@ describe("apply_patch tolerant matching ambiguity (openclaw#124392)", () => {
     expect(result).toBe(["return None", "flush()", "return None", ""].join("\n"));
   });
 
+  it("reports an ambiguous @@ context marker instead of claiming it is missing", async () => {
+    // The marker only matches after the tolerant pass strips indentation, and it
+    // matches both blocks. That is an ambiguity, not a missing context line.
+    const source = [
+      "class Reader:",
+      "\tdef flush(self):",
+      "\t\treturn None",
+      "",
+      "class Writer:",
+      "\tdef flush(self):",
+      "\t\treturn None",
+      "",
+    ].join("\n");
+
+    await expect(
+      applyUpdateHunk(
+        "streams.py",
+        [chunk({ changeContext: "def flush(self):", oldLines: ["        return None"] })],
+        { readFile: async () => source },
+      ),
+    ).rejects.toThrow(
+      /Found 2 occurrences of context 'def flush\(self\):' in streams\.py\. The context must be unique\. Please use a more specific @@ context line\./,
+    );
+  });
+
+  it("still resolves a tolerant @@ context marker when it matches one line", async () => {
+    const source = [
+      "class Reader:",
+      "\tdef read(self):",
+      "\t\treturn None",
+      "",
+      "class Writer:",
+      "\tdef flush(self):",
+      "\t\treturn None",
+      "",
+    ].join("\n");
+
+    const result = await applyUpdateHunk(
+      "streams.py",
+      [chunk({ changeContext: "def flush(self):", oldLines: ["        return None"] })],
+      { readFile: async () => source },
+    );
+
+    // Only the Writer block loses its body; the Reader block is untouched.
+    expect(result).toBe(
+      [
+        "class Reader:",
+        "\tdef read(self):",
+        "\t\treturn None",
+        "",
+        "class Writer:",
+        "\tdef flush(self):",
+        "",
+      ].join("\n"),
+    );
+  });
+
   it("leaves the file untouched when the patch is refused", async () => {
     const dir = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-patch-amb-")));
     try {

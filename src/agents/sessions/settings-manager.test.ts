@@ -1,8 +1,8 @@
 /** Tests session settings loading, persistence, and runtime overrides. */
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   FileSettingsStorage,
   SettingsManager,
@@ -167,38 +167,102 @@ describe("SettingsManager runtime overrides", () => {
 });
 
 describe("FileSettingsStorage first-write locking", () => {
-  it("merges against the locked file when another process creates it first", () => {
-    const dir = mkdtempSync(join(tmpdir(), "openclaw-settings-race-"));
+  const tempDirs: string[] = [];
+
+  function makeTempDir(prefix: string): string {
+    const dir = mkdtempSync(join(tmpdir(), prefix));
+    tempDirs.push(dir);
+    return dir;
+  }
+
+  afterEach(() => {
+    for (const dir of tempDirs.splice(0)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("holds the lock across the read when the settings file does not exist yet", () => {
+    const dir = makeTempDir("openclaw-settings-race-");
     const settingsPath = join(dir, "settings.json");
     const storage = new FileSettingsStorage(dir, dir);
-    const observedReads: (string | undefined)[] = [];
+    const lockedDuringCallback: boolean[] = [];
 
-    storage.withLock("global", (current) => {
-      observedReads.push(current);
-      if (current === undefined) {
-        // Another process wins the create race between the unlocked read and
-        // the lock acquisition below.
-        writeFileSync(settingsPath, JSON.stringify({ theme: "from-other-process" }), "utf-8");
-      }
+    storage.withLockedUpdate("global", (current) => {
+      // A competing process cannot take this lock, so it cannot read the same
+      // empty base and overwrite the value written below.
+      lockedDuringCallback.push(existsSync(`${settingsPath}.lock`));
+      expect(current).toBeUndefined();
+      return JSON.stringify({ defaultModel: "from-this-process" });
+    });
+
+    expect(lockedDuringCallback).toEqual([true]);
+    expect(JSON.parse(readFileSync(settingsPath, "utf-8"))).toEqual({
+      defaultModel: "from-this-process",
+    });
+    expect(existsSync(`${settingsPath}.lock`)).toBe(false);
+  });
+
+  it("merges against the file another process created before the lock was granted", () => {
+    const dir = makeTempDir("openclaw-settings-existing-");
+    const settingsPath = join(dir, "settings.json");
+    const storage = new FileSettingsStorage(dir, dir);
+    // Stand in for the process that won the create race.
+    writeFileSync(settingsPath, JSON.stringify({ theme: "from-other-process" }), "utf-8");
+    const callbackCalls: (string | undefined)[] = [];
+
+    storage.withLockedUpdate("global", (current) => {
+      callbackCalls.push(current);
       const base = current ? (JSON.parse(current) as Record<string, unknown>) : {};
       return JSON.stringify({ ...base, defaultModel: "from-this-process" });
     });
 
-    // The callback re-runs against the locked contents, so neither write is lost.
-    expect(observedReads).toEqual([undefined, JSON.stringify({ theme: "from-other-process" })]);
+    expect(callbackCalls).toHaveLength(1);
     expect(JSON.parse(readFileSync(settingsPath, "utf-8"))).toEqual({
       theme: "from-other-process",
       defaultModel: "from-this-process",
     });
   });
 
+  it("invokes the public withLock callback exactly once on the create path", () => {
+    const dir = makeTempDir("openclaw-settings-once-");
+    const settingsPath = join(dir, "settings.json");
+    const storage = new FileSettingsStorage(dir, dir);
+    const callbackCalls: (string | undefined)[] = [];
+
+    storage.withLock("global", (current) => {
+      callbackCalls.push(current);
+      if (current === undefined) {
+        // Another process creates the file mid-callback. The public contract is
+        // one invocation, so plugin side effects are never replayed.
+        writeFileSync(settingsPath, JSON.stringify({ theme: "from-other-process" }), "utf-8");
+      }
+      return JSON.stringify({ defaultModel: "from-this-process" });
+    });
+
+    expect(callbackCalls).toEqual([undefined]);
+    expect(JSON.parse(readFileSync(settingsPath, "utf-8"))).toEqual({
+      defaultModel: "from-this-process",
+    });
+  });
+
   it("writes normally when no competing process creates the file", () => {
-    const dir = mkdtempSync(join(tmpdir(), "openclaw-settings-first-"));
+    const dir = makeTempDir("openclaw-settings-first-");
     const settingsPath = join(dir, "settings.json");
     const storage = new FileSettingsStorage(dir, dir);
 
-    storage.withLock("global", () => JSON.stringify({ theme: "solo" }));
+    storage.withLockedUpdate("global", () => JSON.stringify({ theme: "solo" }));
 
     expect(JSON.parse(readFileSync(settingsPath, "utf-8"))).toEqual({ theme: "solo" });
+  });
+
+  it("skips the write and releases the lock when the mutator returns undefined", () => {
+    const dir = makeTempDir("openclaw-settings-noop-");
+    const settingsPath = join(dir, "settings.json");
+    const storage = new FileSettingsStorage(dir, dir);
+
+    storage.withLockedUpdate("global", () => undefined);
+
+    expect(existsSync(settingsPath)).toBe(false);
+    expect(existsSync(`${settingsPath}.lock`)).toBe(false);
   });
 });

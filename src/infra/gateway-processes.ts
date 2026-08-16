@@ -88,7 +88,13 @@ export async function assertGatewayPortFreeWhenPidUnknown(port: number): Promise
   if (status === "free") {
     return;
   }
+  // Both remaining statuses stay fail-closed, but they describe different
+  // situations: "busy" observed a listener, while "unknown" means the probe
+  // itself could not answer. Reporting the port as in use for "unknown" would
+  // send operators looking for a listener that may not exist.
   throw new Error(
-    `port ${port} is in use but the gateway process could not be identified (lsof unavailable or the gateway lock is missing/stale); run "openclaw gateway status --deep" to investigate`,
+    status === "busy"
+      ? `port ${port} is in use but the gateway process could not be identified (lsof unavailable or the gateway lock is missing/stale); run "openclaw gateway status --deep" to investigate`
+      : `could not determine whether port ${port} is still in use, so the gateway cannot be confirmed stopped; run "openclaw gateway status --deep" to investigate`,
   );
 }

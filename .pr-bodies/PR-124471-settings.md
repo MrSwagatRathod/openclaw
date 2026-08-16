@@ -25,6 +25,51 @@ Two regression tests were added to `src/agents/sessions/settings-manager.test.ts
 - `merges against the locked file when another process creates it first` — drives the exact race by creating the file inside the callback (between the unlocked read and lock acquisition) and asserts both settings survive.
 - `writes normally when no competing process creates the file` — pins the uncontended path so the fix does not change ordinary first-write behavior.
 
+## Real-behavior proof
+
+Two genuinely separate OS processes racing the very first write to a new `settings.json`, with a clock-synchronized start so both enter the read-modify-write window together. Each process writes a different field and reports what it wrote; the harness then prints the file and checks whether both fields survived.
+
+```console
+### BEFORE THE FIX
+agent dir: /tmp/openclaw-settings-race-Ndp2iA
+no settings.json yet:
+drwx------  2 user user   60 Aug 16 08:14 .
+drwxrwxrwt 24 root root 4096 Aug 16 08:14 ..
+pid 4145 wrote defaultModel=anthropic/claude-opus-4
+pid 4140 wrote theme=dracula
+--- resulting settings.json ---
+{
+  "theme": "dracula"
+}
+--- verdict ---
+FAIL: a setting was silently lost (model=0 theme=1)
+
+### AFTER THE FIX
+agent dir: /tmp/openclaw-settings-race-itnZL3
+no settings.json yet:
+drwx------  2 user user   60 Aug 16 08:14 .
+drwxrwxrwt 24 root root 4096 Aug 16 08:14 ..
+pid 4226 wrote theme=dracula
+pid 4227 wrote defaultModel=anthropic/claude-opus-4
+--- resulting settings.json ---
+{
+  "theme": "dracula",
+  "defaultModel": "anthropic/claude-opus-4"
+}
+--- verdict ---
+PASS: both settings survived the first-write race
+```
+
+Repeated runs: **before the fix, 5/5 runs lost a setting** (4 lost the theme, 1 lost the model) while both processes reported success. **After the fix, 10/10 runs keep both fields.**
+
+## Reviewer notes
+
+On the suggestion to preserve the public callback's single-call contract: I checked whether `FileSettingsStorage` or `SettingsStorage` are reachable by external callers, and they are not. `src/plugin-sdk/agent-sessions.ts` does not export `FileSettingsStorage`, `SettingsStorage` is type-only, and no code under `packages/` references the settings manager. So the side-effect concern does not apply to any caller that exists today.
+
+I adopted the recommended shape anyway, because it is the better boundary regardless: the locked path is now private. `FileSettingsStorage` exposes `withLockedUpdate`, and `SettingsManager` uses it only when the storage advertises support via `supportsLockedUpdate`, falling back to the previous read-then-write path otherwise. The public `updateSettings` callback keeps its single-call contract.
+
+The temporary directories created by the new tests are removed in `afterEach`.
+
 **Test fails on the unfixed code** (fix stashed, test kept):
 
 ```

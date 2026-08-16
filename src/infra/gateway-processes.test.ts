@@ -10,6 +10,7 @@ const parseCmdScriptCommandLineMock = vi.hoisted(() => vi.fn());
 const parseProcCmdlineMock = vi.hoisted(() => vi.fn());
 const isGatewayArgvMock = vi.hoisted(() => vi.fn());
 const findGatewayPidsOnPortSyncMock = vi.hoisted(() => vi.fn());
+const probePortUsageMock = vi.hoisted(() => vi.fn());
 
 vi.mock("node:child_process", async () => {
   const { mockNodeChildProcessSpawnSync } = await import("openclaw/plugin-sdk/test-node-mocks");
@@ -57,6 +58,14 @@ vi.mock("../channels/chat-meta.js", () => ({
   listChatChannels: vi.fn(() => []),
   getChatChannelMeta: vi.fn(() => null),
 }));
+
+// Defaults to the real probe so the free/busy cases exercise actual sockets;
+// the indeterminate case overrides it, which no real socket can produce.
+vi.mock("./ports-probe.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./ports-probe.js")>();
+  probePortUsageMock.mockImplementation(actual.probePortUsage);
+  return { ...actual, probePortUsage: (...args: unknown[]) => probePortUsageMock(...args) };
+});
 
 const {
   assertGatewayPortFreeWhenPidUnknown,
@@ -228,5 +237,28 @@ describe("gateway-processes", () => {
         server.close(() => resolve());
       });
     }
+  });
+
+  it("distinguishes an indeterminate probe from an occupied port", async () => {
+    const port = await findFreePort();
+    probePortUsageMock.mockResolvedValueOnce("unknown");
+
+    const error = await assertGatewayPortFreeWhenPidUnknown(port).catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toMatch(
+      new RegExp(`could not determine whether port ${port} is still in use`),
+    );
+    // The port has no listener, so the "in use" wording would be wrong here.
+    expect((error as Error).message).not.toMatch(/is in use but/);
+  });
+
+  it("stays fail-closed when the probe itself throws", async () => {
+    const port = await findFreePort();
+    probePortUsageMock.mockRejectedValueOnce(new Error("probe exploded"));
+
+    await expect(assertGatewayPortFreeWhenPidUnknown(port)).rejects.toThrow(
+      new RegExp(`could not determine whether port ${port} is still in use`),
+    );
   });
 });

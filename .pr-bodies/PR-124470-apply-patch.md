@@ -120,6 +120,21 @@ Wider validation:
 
 PR #124379 (open) touches the `searchStart` computation in this same function for a different defect (an `*** End of File` chunk seeking backward). This change does not modify `searchStart` and should not conflict semantically, though the two will need a trivial textual merge if both land.
 
+## Reviewer notes
+
+Ambiguous `@@` context markers now report their own error instead of being folded into the generic "failed to find context" message. When the tolerant pass finds a marker more than once, the error names the marker and the occurrence count:
+
+```
+Found 3 occurrences of context 'def handle(self):' in app/handlers.py.
+The context must be unique. Please use a more specific @@ context line.
+```
+
+Previously an ambiguous marker surfaced as "Failed to find context", which pointed at the wrong problem: the context was found, just not uniquely. The internal `seekSequence` wrapper that discarded the ambiguity signal was removed, so the ambiguous case can no longer be silently downgraded to "missing".
+
+This PR is now a single commit scoped to apply_patch only. The settings-manager commit that was previously in this branch has been removed; it belongs to #124471.
+
+Note on overlap: this touches the same matching code as open PR #124379 (apply_patch EOF-location repair). If that lands first I will rebase; the two protections are independent and both should be retained.
+
 ## AI assistance
 
 This change was AI-assisted. The reproduction, fix, tests, and all validation output above were run and verified against the report in #124392.

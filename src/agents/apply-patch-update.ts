@@ -63,11 +63,18 @@ function computeReplacements(
 
   for (const chunk of chunks) {
     if (chunk.changeContext) {
-      const ctxIndex = seekSequence(originalLines, [chunk.changeContext], lineIndex, false);
-      if (ctxIndex === null) {
+      const ctxSearch = searchSequence(originalLines, [chunk.changeContext], lineIndex, false);
+      if (ctxSearch.kind === "ambiguous") {
+        // A tolerant pass matched several lookalike markers. Reporting this as
+        // "not found" would hide the real problem, so name it.
+        throw new Error(
+          `Found ${ctxSearch.occurrences} occurrences of context '${chunk.changeContext}' in ${filePath}. The context must be unique. Please use a more specific @@ context line.`,
+        );
+      }
+      if (ctxSearch.kind === "missing") {
         throw new Error(`Failed to find context '${chunk.changeContext}' in ${filePath}`);
       }
-      lineIndex = ctxIndex + 1;
+      lineIndex = ctxSearch.index + 1;
     }
 
     if (chunk.oldLines.length === 0) {
@@ -230,16 +237,6 @@ function searchSequence(
   }
 
   return { kind: "missing" };
-}
-
-function seekSequence(
-  lines: string[],
-  pattern: string[],
-  start: number,
-  eof: boolean,
-): number | null {
-  const result = searchSequence(lines, pattern, start, eof);
-  return result.kind === "found" ? result.index : null;
 }
 
 function linesMatch(

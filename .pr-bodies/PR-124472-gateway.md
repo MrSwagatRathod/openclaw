@@ -39,9 +39,10 @@ Behavior change, limited to the "no PID found" branch:
 | Port state | Before | After |
 | --- | --- | --- |
 | free | `not-loaded` | `not-loaded` (unchanged) |
-| busy / unknown | `not-loaded` (false success) | actionable error |
+| busy (listener observed) | `not-loaded` (false success) | error naming the occupied port |
+| unknown (probe inconclusive) | `not-loaded` (false success) | error saying the stop could not be confirmed |
 
-Paths that do find a PID are untouched. A probe failure is treated as `unknown` and therefore reported rather than swallowed, since claiming success is the more damaging outcome.
+Paths that do find a PID are untouched. Both non-free statuses stay fail-closed, since claiming success is the more damaging outcome, but they now carry distinct messages: `busy` means a listener was actually observed, while `unknown` means the probe itself could not answer. Collapsing the two would send operators looking for a listener that may not exist.
 
 ## User Impact
 
@@ -53,19 +54,112 @@ port 18789 is in use but the gateway process could not be identified
 run "openclaw gateway status --deep" to investigate
 ```
 
+When the probe cannot determine the port state at all, the message is instead:
+
+```
+could not determine whether port 18789 is still in use, so the gateway
+cannot be confirmed stopped;
+run "openclaw gateway status --deep" to investigate
+```
+
 Users on containers without `lsof`, or with a missing/stale lock, get a clear pointer to the diagnostic command instead of a wrong answer. Normal stops on a genuinely free port are unaffected.
+
+## Real-behavior proof
+
+Run end to end against a live gateway, not only in unit tests. The host reproduces the #119065 conditions exactly: no systemd (`Failed to connect to bus: Permission denied`), `lsof` not installed, and a real gateway serving on `http://127.0.0.1:18789/`. The gateway lock was deleted to create the missing/stale-lock condition. The command under test is `openclaw gateway stop --json --force` against the default state dir with no environment overrides.
+
+The before/after runs differ only in whether the built CLI calls the new guard.
+
+```console
+### BEFORE THE FIX (guard removed from the built CLI)
+$ command -v lsof || echo 'lsof: not installed'
+lsof: not installed
+
+$ curl -s -o /dev/null -w 'gateway HTTP %{http_code}\n' http://127.0.0.1:18789/
+gateway HTTP 200
+
+# a missing/stale gateway lock is the #119065 condition
+$ rm -f $LOCKDIR/gateway.*.lock
+
+$ openclaw gateway stop --json --force
+{
+  "action": "stop",
+  "ok": true,
+  "result": "not-loaded",
+  "message": "Gateway service disabled.",
+  "service": {
+    "label": "systemd user",
+    "loaded": false,
+    "loadedText": "enabled",
+    "notLoadedText": "disabled"
+  }
+}
+
+# is the gateway actually stopped?
+$ curl -s -o /dev/null -w 'gateway HTTP %{http_code}\n' http://127.0.0.1:18789/
+gateway HTTP 200
+
+### AFTER THE FIX
+$ command -v lsof || echo 'lsof: not installed'
+lsof: not installed
+
+$ curl -s -o /dev/null -w 'gateway HTTP %{http_code}\n' http://127.0.0.1:18789/
+gateway HTTP 200
+
+# a missing/stale gateway lock is the #119065 condition
+$ rm -f $LOCKDIR/gateway.*.lock
+
+$ openclaw gateway stop --json --force
+{
+  "action": "stop",
+  "ok": false,
+  "error": "Gateway stop failed: Error: port 18789 is in use but the gateway process could not be identified (lsof unavailable or the gateway lock is missing/stale); run \"openclaw gateway status --deep\" to investigate"
+}
+
+# is the gateway actually stopped?
+$ curl -s -o /dev/null -w 'gateway HTTP %{http_code}\n' http://127.0.0.1:18789/
+gateway HTTP 200
+
+### CONTROL: with the lock intact, the fixed build still stops the gateway
+$ curl -s -o /dev/null -w "gateway HTTP %{http_code}\n" http://127.0.0.1:18789/
+gateway HTTP 200
+
+$ ls ~/.openclaw/tmp/openclaw-*/gateway.*.lock
+/home/user/.openclaw/tmp/openclaw-1001/gateway.94e6aae2.lock
+/home/user/.openclaw/tmp/openclaw-1001/gateway.state.lock
+
+$ openclaw gateway stop --json --force
+{
+  "action": "stop",
+  "ok": true,
+  "result": "stopped",
+  "message": "Gateway stop signal sent to unmanaged process on port 18789: 6181.",
+  "service": {
+    "label": "systemd user",
+    "loaded": false,
+    "loadedText": "enabled",
+    "notLoadedText": "disabled"
+  }
+}
+
+$ curl -s -m 5 ... (after stop)
+gateway HTTP 000
+connection refused (gateway really stopped)
+```
+
+The control run at the end matters as much as the failure cases: with the lock intact the fixed build still stops the gateway, reports `"ok": true, "result": "stopped"`, and the port stops answering. The fix does not turn working stops into false failures.
 
 ## Evidence
 
 New regression tests, both verified to fail without the fix:
 
 - `src/cli/daemon-cli/lifecycle.test.ts` — the unmanaged stop path fails instead of returning `not-loaded` when the port is busy, and the existing "not running" test now asserts the port is confirmed free first.
-- `src/infra/gateway-processes.test.ts` — `assertGatewayPortFreeWhenPidUnknown` resolves for a free port and rejects against a real listening socket.
+- `src/infra/gateway-processes.test.ts` — `assertGatewayPortFreeWhenPidUnknown` resolves for a free port, rejects against a real listening socket, and reports `busy` and `unknown` with their own distinct messages.
 
 ```
 # with the fix
 ✓ src/cli/daemon-cli/lifecycle.test.ts (44 tests)
-✓ src/infra/gateway-processes.test.ts (8 tests)
+✓ src/infra/gateway-processes.test.ts (10 tests)
 ✓ src/infra/ports-probe.test.ts
   Test Files  3 passed (3)
        Tests  55 passed (55)
