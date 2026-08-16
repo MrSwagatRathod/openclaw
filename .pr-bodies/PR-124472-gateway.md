@@ -183,3 +183,31 @@ Note: `src/infra/restart-stale-pids.test.ts` has 6 failures, confirmed pre-exist
 ## AI assistance
 
 This change was AI-assisted. The diagnosis, fix, tests, and validation output above were reviewed against the reported reproduction in #119065.
+
+## Update: CI lint failure fixed
+
+The previous head of this branch failed the repository lint gate, so it could not have gone green:
+
+```
+src/cli/daemon-cli/lifecycle.ts       x eslint(max-lines): File has too many lines (701).  Maximum allowed is 700.
+src/cli/daemon-cli/lifecycle.test.ts  x eslint(max-lines): File has too many lines (1001). Maximum allowed is 1000.
+Found 0 warnings and 2 errors.
+```
+
+Both files sit exactly at their `max-lines` caps on `main`, so the lines this fix adds pushed each one over by exactly one. Rather than add a suppression or inline the guard, the added cost was paid back inside the code this PR already touches:
+
+- `lifecycle.ts` — the four-field `appendGatewayLifecycleAudit({ action, source, mode, pid })` call is written on one line (it is 92 chars, within the 100-char print width).
+- `lifecycle.test.ts` — the long expected-error string is hoisted into a `busyPortError` const instead of being nested inside `new Error(...)`.
+
+Neither edit changes behaviour or drops an assertion. Current state of every gate:
+
+```
+oxlint  lifecycle.ts lifecycle.test.ts gateway-processes.ts gateway-processes.test.ts
+  -> Found 0 warnings and 0 errors.
+oxfmt --check  -> All matched files use the correct format.
+tsgo -p tsconfig.core.json -> exit 0
+vitest run src/cli/daemon-cli/lifecycle.test.ts src/infra/gateway-processes.test.ts
+  -> Test Files 2 passed, Tests 53 passed
+node --import tsx scripts/check-max-lines-ratchet.mts
+  -> max-lines ratchet OK: 910 grandfathered suppressions.
+```

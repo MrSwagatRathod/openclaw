@@ -64,9 +64,15 @@ Repeated runs: **before the fix, 5/5 runs lost a setting** (4 lost the theme, 1 
 
 ## Reviewer notes
 
-On the suggestion to preserve the public callback's single-call contract: I checked whether `FileSettingsStorage` or `SettingsStorage` are reachable by external callers, and they are not. `src/plugin-sdk/agent-sessions.ts` does not export `FileSettingsStorage`, `SettingsStorage` is type-only, and no code under `packages/` references the settings manager. So the side-effect concern does not apply to any caller that exists today.
+On the suggestion to preserve the public callback's single-call contract: this is a real external contract, and the review was right to raise it. `FileSettingsStorage`, `InMemorySettingsStorage`, and the `SettingsStorage` type are re-exported from `src/agents/sessions/extension-sdk.ts`, which the extension loader virtualizes as `openclaw/plugin-sdk/agent-sessions` (`src/agents/sessions/extensions/loader.ts`). Third-party extensions can therefore implement or call these types, so the change is written to keep that surface intact.
 
-I adopted the recommended shape anyway, because it is the better boundary regardless: the locked path is now private. `FileSettingsStorage` exposes `withLockedUpdate`, and `SettingsManager` uses it only when the storage advertises support via `supportsLockedUpdate`, falling back to the previous read-then-write path otherwise. The public `updateSettings` callback keeps its single-call contract.
+Concretely:
+
+- **No exported symbol is added, removed, or renamed.** `grep '^export'` on `settings-manager.ts` produces the same symbol list before and after this change; only line numbers move. `SettingsMutator` and `LockedUpdateSettingsStorage` are deliberately module-private (not exported) so the SDK surface and the unused-export gate both stay clean.
+- **`withLock` keeps its exact previous behaviour and signature.** A custom `SettingsStorage` implemented by an extension continues to work unchanged, because `withLockedUpdate` is opt-in and detected via `supportsLockedUpdate`; anything that does not advertise it takes the original path.
+- **The mutator is still invoked exactly once** on both paths — no retry loop and no double invocation, so callbacks with side effects behave as before.
+
+Extension-surface tests were run to confirm nothing regressed there: `src/agents/sessions/extensions/loader.test.ts` and `loader.bun-virtual-modules.test.ts` (the virtual-module test that asserts `openclaw/plugin-sdk/agent-sessions` resolves) both pass.
 
 The temporary directories created by the new tests are removed in `afterEach`.
 
@@ -105,3 +111,30 @@ observed reads: [ undefined ]
 ## AI Assistance
 
 This change was AI-assisted. The defect was reproduced against the real storage class, the fix was written and reviewed by a human-directed agent session, and the failing-then-passing test evidence above was produced by actually running the suite locally.
+
+## Re-verified against current main
+
+Re-checked after upstream moved to `cae9ecab`, since this branch was opened against an older base.
+
+The defect still reproduces on today's `main` — two real OS processes, clock-synchronised, both creating `settings.json` for the first time:
+
+```
+# on upstream/main @ cae9ecab (unfixed)
+FAIL: a setting was silently lost (model=0 theme=1)
+FAIL: a setting was silently lost (model=0 theme=1)
+FAIL: a setting was silently lost (model=0 theme=1)
+```
+
+With this change applied, the same harness passes every run:
+
+```
+PASS: both settings survived the first-write race   (5/5 runs)
+{ "defaultModel": "anthropic/claude-opus-4", "theme": "dracula" }
+```
+
+Gates re-run on the rebased tree:
+
+- `vitest run src/agents/sessions/settings-manager.test.ts` — 20 passed
+- `vitest run .../extensions/loader.test.ts .../loader.bun-virtual-modules.test.ts` — 4 passed
+- `oxlint` — 0 warnings / 0 errors, `oxfmt --check` — correct format
+- `tsgo -p tsconfig.core.json` — exit 0

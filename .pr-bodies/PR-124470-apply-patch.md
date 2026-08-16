@@ -138,3 +138,46 @@ Note on overlap: this touches the same matching code as open PR #124379 (apply_p
 ## AI assistance
 
 This change was AI-assisted. The reproduction, fix, tests, and all validation output above were run and verified against the report in #124392.
+
+## Overlap with #124379 — verified compatible
+
+This PR and #124379 (`apply_patch` end-of-file hunk repair) both touch `computeReplacements` in `src/agents/apply-patch-update.ts`, so the overlap was tested rather than assumed.
+
+#124379 changes one line inside the EOF search:
+
+```diff
+-  const searchStart = eof && lines.length >= pattern.length ? maxStart : start;
++  const searchStart = eof ? Math.max(start, maxStart) : start;
+```
+
+This PR does not modify that line — it removes the thin `seekSequence` wrapper and makes the ambiguous-match case throw. Merging the two locally is a clean auto-merge (no conflict), and the merged result keeps #124379's `Math.max(start, maxStart)` cursor **and** this PR's ambiguity guard:
+
+```
+git merge pr124379
+  Auto-merging src/agents/apply-patch-update.ts
+  Merge made by the 'ort' strategy.
+
+grep searchStart src/agents/apply-patch-update.ts
+  const searchStart = eof ? Math.max(start, maxStart) : start;
+```
+
+Both test suites pass together on the merged tree, so whichever lands first, the second still applies cleanly:
+
+```
+vitest run apply-patch-ambiguous-hunk.test.ts apply-patch-eof-hunks.test.ts apply-patch.test.ts
+  Test Files  6 passed (6)
+       Tests  122 passed (122)
+```
+
+## Re-verified against current main
+
+Checked after upstream advanced to `cae9ecab`; every file this PR touches is byte-identical between this branch's base and current `main`, so the rebase is clean and the diff is unchanged.
+
+```
+vitest run src/agents/apply-patch*.test.ts -> Test Files 10 passed, Tests 172 passed
+oxlint  -> Found 0 warnings and 0 errors.
+oxfmt --check -> All matched files use the correct format.
+tsgo -p tsconfig.core.json -> exit 0
+```
+
+No exported symbol is added, removed, or renamed: `grep '^export'` on `apply-patch-update.ts` yields an identical symbol list before and after.
