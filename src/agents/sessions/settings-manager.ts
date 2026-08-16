@@ -162,8 +162,8 @@ export class FileSettingsStorage implements SettingsStorage {
       if (fileExists) {
         release = acquireFileLockSyncWithRetry(path);
       }
-      const current = fileExists ? readFileSync(path, "utf-8") : undefined;
-      const next = fn(current);
+      const current = readSettingsFileIfPresent(path);
+      let next = fn(current);
       if (next !== undefined) {
         // Only create directory when we actually need to write
         if (!existsSync(dir)) {
@@ -171,12 +171,35 @@ export class FileSettingsStorage implements SettingsStorage {
         }
         if (!release) {
           release = acquireFileLockSyncWithRetry(path);
+          // The read above ran unlocked because the file did not exist yet.
+          // Another process may have created or replaced it before this lock
+          // was granted, so re-run the merge against the locked contents;
+          // otherwise that process's settings are silently overwritten.
+          const locked = readSettingsFileIfPresent(path);
+          if (locked !== current) {
+            next = fn(locked);
+            if (next === undefined) {
+              return;
+            }
+          }
         }
         writeFileSync(path, next, "utf-8");
       }
     } finally {
       release?.();
     }
+  }
+}
+
+/** Read settings file contents, treating a missing file as absent. */
+function readSettingsFileIfPresent(path: string): string | undefined {
+  try {
+    return readFileSync(path, "utf-8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return undefined;
+    }
+    throw error;
   }
 }
 
