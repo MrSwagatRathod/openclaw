@@ -1,0 +1,74 @@
+### BEFORE THE FIX (guard removed from the built CLI)
+$ command -v lsof || echo 'lsof: not installed'
+lsof: not installed
+
+$ curl -s -o /dev/null -w 'gateway HTTP %{http_code}\n' http://127.0.0.1:18789/
+gateway HTTP 200
+
+# a missing/stale gateway lock is the #119065 condition
+$ rm -f $LOCKDIR/gateway.*.lock
+
+$ openclaw gateway stop --json --force
+{
+  "action": "stop",
+  "ok": true,
+  "result": "not-loaded",
+  "message": "Gateway service disabled.",
+  "service": {
+    "label": "systemd user",
+    "loaded": false,
+    "loadedText": "enabled",
+    "notLoadedText": "disabled"
+  }
+}
+
+# is the gateway actually stopped?
+$ curl -s -o /dev/null -w 'gateway HTTP %{http_code}\n' http://127.0.0.1:18789/
+gateway HTTP 200
+
+### AFTER THE FIX
+$ command -v lsof || echo 'lsof: not installed'
+lsof: not installed
+
+$ curl -s -o /dev/null -w 'gateway HTTP %{http_code}\n' http://127.0.0.1:18789/
+gateway HTTP 200
+
+# a missing/stale gateway lock is the #119065 condition
+$ rm -f $LOCKDIR/gateway.*.lock
+
+$ openclaw gateway stop --json --force
+{
+  "action": "stop",
+  "ok": false,
+  "error": "Gateway stop failed: Error: port 18789 is in use but the gateway process could not be identified (lsof unavailable or the gateway lock is missing/stale); run \"openclaw gateway status --deep\" to investigate"
+}
+
+# is the gateway actually stopped?
+$ curl -s -o /dev/null -w 'gateway HTTP %{http_code}\n' http://127.0.0.1:18789/
+gateway HTTP 200
+
+### CONTROL: with the lock intact, the fixed build still stops the gateway
+$ curl -s -o /dev/null -w "gateway HTTP %{http_code}\n" http://127.0.0.1:18789/
+gateway HTTP 200
+
+$ ls ~/.openclaw/tmp/openclaw-*/gateway.*.lock
+/home/user/.openclaw/tmp/openclaw-1001/gateway.94e6aae2.lock
+/home/user/.openclaw/tmp/openclaw-1001/gateway.state.lock
+
+$ openclaw gateway stop --json --force
+{
+  "action": "stop",
+  "ok": true,
+  "result": "stopped",
+  "message": "Gateway stop signal sent to unmanaged process on port 18789: 6181.",
+  "service": {
+    "label": "systemd user",
+    "loaded": false,
+    "loadedText": "enabled",
+    "notLoadedText": "disabled"
+  }
+}
+
+$ curl -s -m 5 ... (after stop)
+gateway HTTP 000
+connection refused (gateway really stopped)

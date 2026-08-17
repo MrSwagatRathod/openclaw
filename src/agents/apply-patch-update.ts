@@ -63,11 +63,18 @@ function computeReplacements(
 
   for (const chunk of chunks) {
     if (chunk.changeContext) {
-      const ctxIndex = seekSequence(originalLines, [chunk.changeContext], lineIndex, false);
-      if (ctxIndex === null) {
+      const ctxSearch = searchSequence(originalLines, [chunk.changeContext], lineIndex, false);
+      if (ctxSearch.kind === "ambiguous") {
+        // A tolerant pass matched several lookalike markers. Reporting this as
+        // "not found" would hide the real problem, so name it.
+        throw new Error(
+          `Found ${ctxSearch.occurrences} occurrences of context '${chunk.changeContext}' in ${filePath}. The context must be unique. Please use a more specific @@ context line.`,
+        );
+      }
+      if (ctxSearch.kind === "missing") {
         throw new Error(`Failed to find context '${chunk.changeContext}' in ${filePath}`);
       }
-      lineIndex = ctxIndex + 1;
+      lineIndex = ctxSearch.index + 1;
     }
 
     if (chunk.oldLines.length === 0) {
@@ -84,23 +91,31 @@ function computeReplacements(
 
     let pattern = chunk.oldLines;
     let newSlice = chunk.newLines;
-    let found = seekSequence(originalLines, pattern, lineIndex, chunk.isEndOfFile);
+    let search = searchSequence(originalLines, pattern, lineIndex, chunk.isEndOfFile);
 
-    if (found === null && pattern[pattern.length - 1] === "") {
+    if (search.kind === "missing" && pattern[pattern.length - 1] === "") {
       // Parsed hunks may carry an EOF sentinel as a blank trailing line. Retry
       // without it so equivalent file contents still match.
       pattern = pattern.slice(0, -1);
       if (newSlice.length > 0 && newSlice[newSlice.length - 1] === "") {
         newSlice = newSlice.slice(0, -1);
       }
-      found = seekSequence(originalLines, pattern, lineIndex, chunk.isEndOfFile);
+      search = searchSequence(originalLines, pattern, lineIndex, chunk.isEndOfFile);
     }
 
-    if (found === null) {
+    if (search.kind === "ambiguous") {
+      throw new Error(
+        `Found ${search.occurrences} occurrences of these lines in ${filePath}. The lines must be unique. Please include surrounding context lines to make the hunk unique:\n${chunk.oldLines.join("\n")}`,
+      );
+    }
+
+    if (search.kind === "missing") {
       throw new Error(
         `Failed to find expected lines in ${filePath}:\n${chunk.oldLines.join("\n")}`,
       );
     }
+
+    const found = search.index;
 
     replacements.push([
       found,
@@ -157,23 +172,32 @@ function applyReplacements(
   return result;
 }
 
-function seekSequence(
+/**
+ * Result of locating a hunk. `ambiguous` means a tolerant pass matched more
+ * than one location, so no single target can be chosen safely.
+ */
+type SequenceSearch =
+  | { kind: "found"; index: number }
+  | { kind: "ambiguous"; occurrences: number }
+  | { kind: "missing" };
+
+function searchSequence(
   lines: string[],
   pattern: string[],
   start: number,
   eof: boolean,
-): number | null {
+): SequenceSearch {
   if (pattern.length === 0) {
-    return start;
+    return { kind: "found", index: start };
   }
   if (pattern.length > lines.length) {
-    return null;
+    return { kind: "missing" };
   }
 
   const maxStart = lines.length - pattern.length;
   const searchStart = eof && lines.length >= pattern.length ? maxStart : start;
   if (searchStart > maxStart) {
-    return null;
+    return { kind: "missing" };
   }
 
   // Fall back through increasingly tolerant comparisons. This preserves normal
@@ -185,15 +209,34 @@ function seekSequence(
     (value: string) => value.trim(),
     (value: string) => normalizePunctuation(value.trim()),
   ];
-  for (const normalize of normalizers) {
+  for (const [tier, normalize] of normalizers.entries()) {
+    // The exact pass keeps first-match-wins: an exactly quoted hunk names its
+    // target unambiguously, so repeated identical blocks stay addressable.
+    const exactPass = tier === 0;
+    let firstMatch: number | null = null;
+    let occurrences = 0;
     for (let i = searchStart; i <= maxStart; i += 1) {
-      if (linesMatch(lines, pattern, i, normalize)) {
-        return i;
+      if (!linesMatch(lines, pattern, i, normalize)) {
+        continue;
       }
+      if (exactPass) {
+        return { kind: "found", index: i };
+      }
+      firstMatch ??= i;
+      occurrences += 1;
     }
+    if (firstMatch === null) {
+      continue;
+    }
+    // Tolerant passes ignore indentation, so a hunk aimed at a nested block can
+    // also match a shallower lookalike. Picking the first hit would silently
+    // edit the wrong location, so refuse instead of guessing.
+    return occurrences > 1
+      ? { kind: "ambiguous", occurrences }
+      : { kind: "found", index: firstMatch };
   }
 
-  return null;
+  return { kind: "missing" };
 }
 
 function linesMatch(

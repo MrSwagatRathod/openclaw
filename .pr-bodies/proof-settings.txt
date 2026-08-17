@@ -1,0 +1,28 @@
+### BEFORE THE FIX
+agent dir: /tmp/openclaw-settings-race-Ndp2iA
+no settings.json yet:
+drwx------  2 user user   60 Aug 16 08:14 .
+drwxrwxrwt 24 root root 4096 Aug 16 08:14 ..
+pid 4145 wrote defaultModel=anthropic/claude-opus-4
+pid 4140 wrote theme=dracula
+--- resulting settings.json ---
+{
+  "theme": "dracula"
+}
+--- verdict ---
+FAIL: a setting was silently lost (model=0 theme=1)
+
+### AFTER THE FIX
+agent dir: /tmp/openclaw-settings-race-itnZL3
+no settings.json yet:
+drwx------  2 user user   60 Aug 16 08:14 .
+drwxrwxrwt 24 root root 4096 Aug 16 08:14 ..
+pid 4226 wrote theme=dracula
+pid 4227 wrote defaultModel=anthropic/claude-opus-4
+--- resulting settings.json ---
+{
+  "theme": "dracula",
+  "defaultModel": "anthropic/claude-opus-4"
+}
+--- verdict ---
+PASS: both settings survived the first-write race
